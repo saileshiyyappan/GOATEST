@@ -1,0 +1,11 @@
+{
+  "name": "GOATEST",
+  "description": "GOATEST Mobile Health-Monitoring Platform - Universal Foundation, Firebase Integration, and Design System",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
+

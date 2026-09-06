@@ -1,0 +1,6 @@
+{
+  "name": "Band V1 Compare Validation",
+  "description": "BAND V1 PHB/SHB Compare Stage 0-5 algorithm validation, 11-parameter consistency verification, ML vector generation, and CSV simulation export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

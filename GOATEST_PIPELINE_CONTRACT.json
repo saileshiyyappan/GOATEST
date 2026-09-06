@@ -1,0 +1,19 @@
+{
+  "name": "GOATEST_PIPELINE_CONTRACT",
+  "version": "1.0",
+  "firebaseProject": "HUMAN_CONFIGURATION_REQUIRED",
+  "identity": "verified Firebase Auth UID",
+  "boundaries": [
+    {"name":"SHB_TO_PACKET","input":"Completed real SHB measurement","output":"CM_PACKET_V1 with 11 canonical parameters","auth":"Current Firebase user ID token","database":"None; transport only","error":"Do not send without authenticated user/token","consumer":"C50 integration endpoint"},
+    {"name":"PACKET_TO_TEST","input":"CM_PACKET_V1 + Bearer token","output":"C50 TEST match result","auth":"Firebase Admin token verification and packet UID equality","database":"/test and /reports_test","error":"401/403/400; no ML or write on rejection","consumer":"DAY pipeline and HOME"},
+    {"name":"TEST_TO_DAY","input":"Three completed TEST observations, same UID, optional /qa_sessions","output":"DAY match result","auth":"Verified UID ownership","database":"/day and /reports_day","error":"DAY_NOT_ELIGIBLE for incomplete input","consumer":"WEEK pipeline and HOME"},
+    {"name":"DAY_TO_WEEK","input":"Seven completed DAY observations, same UID","output":"WEEK match result","auth":"Verified UID ownership","database":"/week and /reports_week","error":"WEEK_NOT_ELIGIBLE for incomplete input","consumer":"MONTH pipeline and HOME"},
+    {"name":"WEEK_TO_MONTH","input":"Four completed WEEK observations, same UID","output":"MONTH match result","auth":"Verified UID ownership","database":"/month and /reports_month","error":"MONTH_NOT_ELIGIBLE for incomplete input; no zero fill","consumer":"HOME"},
+    {"name":"REPORT_TO_HOME","input":"Canonical CONDITION observations and reports","output":"Display normalization only","auth":"Firebase Auth UID or explicitly authorized caretaker target","database":"Canonical collections only","error":"Safe empty/loading/permission state","consumer":"HOME"},
+    {"name":"REPORT_TO_NOTIFICATION","input":"Successful persisted authoritative report","output":"USER and CARETAKER notification","auth":"Verified UID and relationship","database":"/notifications","error":"No notification when report persistence fails","consumer":"User/caretaker notification surfaces"}
+  ],
+  "canonicalPacket":"CM_PACKET_V1",
+  "canonicalCollections":["/test","/day","/week","/month","/reports_test","/reports_day","/reports_week","/reports_month","/qa_sessions"],
+  "forbiddenCollections":["/cm_packets","/tests","/day_records","/week_records","/month_records","/c50_results"],
+  "runtimeStatus":"BLOCKED_PENDING_DEPENDENCIES_FIREBASE_PROJECT_AND_CREDENTIALS"
+}

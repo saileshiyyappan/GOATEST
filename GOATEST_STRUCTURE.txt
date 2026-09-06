@@ -1,0 +1,80 @@
+ 
+============================================================ 
+PROJECT: c50 
+============================================================ 
+[FOLDERS] 
+assets
+data
+dataset
+src
+[ROOT FILES] 
+.env.example
+.gitignore
+bun.lock
+firebase-applet-config.json
+firebase-blueprint.json
+firestore.rules
+index.html
+metadata.json
+package.json
+README.md
+server.ts
+tsconfig.json
+vite.config.ts
+ 
+============================================================ 
+PROJECT: crib 
+============================================================ 
+[FOLDERS] 
+assets
+src
+[ROOT FILES] 
+.env.example
+.gitignore
+index.html
+metadata.json
+package.json
+README.md
+server.ts
+tsconfig.json
+vite.config.ts
+ 
+============================================================ 
+PROJECT: home 
+============================================================ 
+[FOLDERS] 
+assets
+src
+[ROOT FILES] 
+.env.example
+.gitignore
+bun.lock
+firebase-applet-config.json
+firebase-blueprint.json
+firestore.rules
+index.html
+metadata.json
+package.json
+README.md
+server.ts
+tsconfig.json
+vite.config.ts
+ 
+============================================================ 
+PROJECT: shb 
+============================================================ 
+[FOLDERS] 
+assets
+src
+[ROOT FILES] 
+.env.example
+.gitignore
+bun.lock
+firebase-blueprint.json
+firestore.rules
+index.html
+metadata.json
+package.json
+README.md
+tsconfig.json
+vite.config.ts

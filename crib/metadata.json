@@ -1,0 +1,7 @@
+{
+  "name": "CRIB Emergency Console",
+  "description": "Universal CRIB emergency interface supporting SDCU state machine, 120s evaluation window, action verification prompts, SSB, and DIAG modes with live telemetry, media controls, and manual override.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

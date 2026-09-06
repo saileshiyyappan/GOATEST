@@ -1,0 +1,10 @@
+node_modules
+.npm-cache
+android
+src
+assets
+data
+*.env
+*.env.*
+!.env.example
+*.log

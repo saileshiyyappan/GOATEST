@@ -1,0 +1,6 @@
+{
+  "name": "GOATEST Health Monitor",
+  "description": "GOATEST mobile-first health monitoring web application with SHB architecture.",
+  "requestFramePermissions": ["bluetooth"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

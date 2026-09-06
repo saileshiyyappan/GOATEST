@@ -1,0 +1,108 @@
+import { CanonicalParameterConfig } from '../types/compare';
+
+export const CANONICAL_11_PARAMETERS: CanonicalParameterConfig[] = [
+  // Dependent Variables (DV)
+  {
+    id: 'heart_rate',
+    name: 'Heart Rate',
+    category: 'DV',
+    unit: 'bpm',
+    defaultPHB: 67,
+    rawStageMagnitudes: [5, 8, 10, 13, 15],
+    cumulativeBoundaries: [5, 13, 23, 36, 51],
+  },
+  {
+    id: 'spo2',
+    name: 'SpO2',
+    category: 'DV',
+    unit: '%',
+    defaultPHB: 99,
+    rawStageMagnitudes: [1, 1, 1, 2, 3],
+    cumulativeBoundaries: [1, 2, 3, 5, 8],
+  },
+  {
+    id: 'ppi',
+    name: 'PPI',
+    category: 'DV',
+    unit: 'ms',
+    defaultPHB: 850,
+    rawStageMagnitudes: [20, 30, 40, 50, 60],
+    cumulativeBoundaries: [20, 50, 90, 140, 200],
+  },
+
+  // Independent Variables (IV)
+  {
+    id: 'rmssd',
+    name: 'RMSSD',
+    category: 'IV',
+    unit: 'ms',
+    defaultPHB: 50,
+    rawStageMagnitudes: [10, 15, 20, 25, 30],
+    cumulativeBoundaries: [10, 25, 45, 70, 100],
+  },
+  {
+    id: 'sdnn',
+    name: 'SDNN',
+    category: 'IV',
+    unit: 'ms',
+    defaultPHB: 65,
+    rawStageMagnitudes: [10, 15, 20, 25, 30],
+    cumulativeBoundaries: [10, 25, 45, 70, 100],
+  },
+  {
+    id: 'respiratory_rate',
+    name: 'Respiratory Rate',
+    category: 'IV',
+    unit: 'brpm',
+    defaultPHB: 16,
+    rawStageMagnitudes: [1, 2, 2, 3, 4],
+    cumulativeBoundaries: [1, 3, 5, 8, 12],
+  },
+
+  // Contextual Variables (CX)
+  {
+    id: 'activity_intensity',
+    name: 'Activity Intensity',
+    category: 'CX',
+    unit: 'MET',
+    defaultPHB: 1.0,
+    rawStageMagnitudes: [0.5, 1.0, 1.5, 2.0, 3.0],
+    cumulativeBoundaries: [0.5, 1.5, 3.0, 5.0, 8.0],
+  },
+  {
+    id: 'ambient_temperature',
+    name: 'Ambient Temperature',
+    category: 'CX',
+    unit: '°C',
+    defaultPHB: 22.0,
+    rawStageMagnitudes: [2.0, 3.0, 4.0, 5.0, 6.0],
+    cumulativeBoundaries: [2.0, 5.0, 9.0, 14.0, 20.0],
+  },
+  {
+    id: 'relative_humidity',
+    name: 'Relative Humidity',
+    category: 'CX',
+    unit: '%',
+    defaultPHB: 45.0,
+    rawStageMagnitudes: [5.0, 10.0, 15.0, 20.0, 25.0],
+    cumulativeBoundaries: [5.0, 15.0, 30.0, 50.0, 75.0],
+  },
+  {
+    id: 'atmospheric_pressure',
+    name: 'Atmospheric Pressure',
+    category: 'CX',
+    unit: 'hPa',
+    defaultPHB: 1013.0,
+    rawStageMagnitudes: [5.0, 10.0, 15.0, 20.0, 30.0],
+    cumulativeBoundaries: [5.0, 15.0, 30.0, 50.0, 80.0],
+  },
+  {
+    id: 'altitude',
+    name: 'Altitude',
+    category: 'CX',
+    unit: 'm',
+    defaultPHB: 150.0,
+    rawStageMagnitudes: [20.0, 40.0, 60.0, 80.0, 100.0],
+    cumulativeBoundaries: [20.0, 60.0, 120.0, 200.0, 300.0],
+  },
+];

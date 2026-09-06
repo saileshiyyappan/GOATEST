@@ -1,0 +1,53 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "test": "tsx src/testRunner.ts",
+    "c50:generate": "tsx src/c50Runner.ts",
+    "c50:test": "tsx src/c50Runner.ts",
+    "condition:test": "tsx src/conditionRunner.ts",
+    "pmt1:test": "tsx src/pmt1Runner.ts",
+    "pmt2:test": "tsx src/pmt2Runner.ts",
+    "pmt2:integration:test": "tsx src/pmt2IntegrationRunner.ts",
+    "pmt3:integration:test": "tsx src/pmt3IntegrationRunner.ts",
+    "pmt4:runtime:test": "tsx src/pmt4RuntimeRunner.ts",
+    "pmt5:runtime:test": "tsx src/pmt5RuntimeRunner.ts",
+    "pmt6:runtime:test": "tsx src/pmt6RuntimeRunner.ts",
+    "pmtp1:runtime:test": "tsx src/pmtP1RuntimeRunner.ts",
+    "pmtp2:runtime:test": "tsx src/pmtP2RuntimeRunner.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "firebase": "^12.18.0",
+    "firebase-admin": "^13.5.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "pdfkit": "^0.20.1",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/pdfkit": "^0.17.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}

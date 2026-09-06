@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "PhbDocument": {
+      "title": "PhbDocument",
+      "description": "Personal Health Baseline (PHB) physiological data",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID matching Firebase UID"
+        },
+        "heartRate": {
+          "type": "number",
+          "description": "Baseline resting heart rate in bpm"
+        },
+        "spO2": {
+          "type": "number",
+          "description": "Baseline blood oxygen saturation in %"
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Baseline skin temperature in Celsius"
+        },
+        "perfusionIndex": {
+          "type": "number",
+          "description": "Baseline pulse perfusion index in %"
+        },
+        "respiratoryRate": {
+          "type": "number",
+          "description": "Baseline respiratory rate in breaths/min"
+        },
+        "rmssd": {
+          "type": "number",
+          "description": "Baseline HRV RMSSD in ms"
+        },
+        "sdnn": {
+          "type": "number",
+          "description": "Baseline HRV SDNN in ms"
+        },
+        "stressIndex": {
+          "type": "number",
+          "description": "Baseline Baevsky Stress Index"
+        }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/phbs/{userId}": {
+      "schema": "PhbDocument",
+      "description": "Canonical user Personal Health Baseline document"
+    },
+    "/phb/{userId}": {
+      "schema": "PhbDocument",
+      "description": "Legacy fallback user Personal Health Baseline document"
+    }
+  }
+}

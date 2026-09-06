@@ -1,0 +1,386 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isCaretakerOf(targetUserId) {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        'monitoredUserIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+        targetUserId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.monitoredUserIds
+      );
+    }
+
+    function isUserAccount(uid) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.role == 'USER';
+    }
+
+    function isCaretakerAccount(uid) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.role == 'CARETAKER';
+    }
+
+    function isMappedBondTarget(userId) {
+      return isSignedIn()
+        && resource.data.uniqueId is string
+        && exists(/databases/$(database)/documents/public_user_ids/$(resource.data.uniqueId))
+        && get(/databases/$(database)/documents/public_user_ids/$(resource.data.uniqueId)).data.uid == userId
+        && get(/databases/$(database)/documents/public_user_ids/$(resource.data.uniqueId)).data.role == resource.data.role
+        && resource.data.role in ['USER', 'CARETAKER']
+        && resource.data.role != get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isUserCaretakerBondUpdate(targetUserId) {
+      return isUserAccount(request.auth.uid)
+        && targetUserId != request.auth.uid
+        && resource.data.role == 'CARETAKER'
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['monitoredUserIds', 'monitoredUsers', 'updatedAt'])
+        && request.resource.data.monitoredUserIds is list
+        && resource.data.monitoredUserIds is list
+        && request.resource.data.monitoredUsers is list
+        && resource.data.monitoredUsers is list
+        && (
+          (
+            !resource.data.monitoredUserIds.hasAny([request.auth.uid])
+            && request.resource.data.monitoredUserIds.hasAny([request.auth.uid])
+            && request.resource.data.monitoredUserIds.hasAll(resource.data.monitoredUserIds)
+            && request.resource.data.monitoredUserIds.size() == resource.data.monitoredUserIds.size() + 1
+            && request.resource.data.monitoredUsers.hasAll(resource.data.monitoredUsers)
+            && request.resource.data.monitoredUsers.size() == resource.data.monitoredUsers.size() + 1
+            && request.resource.data.monitoredUsers[request.resource.data.monitoredUsers.size() - 1].firebaseUid == request.auth.uid
+            && request.resource.data.monitoredUsers[request.resource.data.monitoredUsers.size() - 1].uniqueId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uniqueId
+            && request.resource.data.monitoredUsers[request.resource.data.monitoredUsers.size() - 1].name == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+            && request.resource.data.monitoredUsers[request.resource.data.monitoredUsers.size() - 1].relationshipName is string
+            && request.resource.data.monitoredUsers[request.resource.data.monitoredUsers.size() - 1].relationshipName.size() <= 80
+          ) || (
+            resource.data.monitoredUserIds.hasAny([request.auth.uid])
+            && !request.resource.data.monitoredUserIds.hasAny([request.auth.uid])
+            && resource.data.monitoredUserIds.hasAll(request.resource.data.monitoredUserIds)
+            && resource.data.monitoredUserIds.size() == request.resource.data.monitoredUserIds.size() + 1
+            && resource.data.monitoredUsers.hasAll(request.resource.data.monitoredUsers)
+            && resource.data.monitoredUsers.size() == request.resource.data.monitoredUsers.size() + 1
+          )
+        );
+    }
+
+    function isCaretakerBondNotification(notificationId) {
+      return isUserAccount(request.auth.uid)
+        && request.resource.data.uid is string
+        && request.resource.data.uid != request.auth.uid
+        && request.resource.data.type == 'SYSTEM'
+        && request.resource.data.title == 'Caretaker Connection'
+        && request.resource.data.recipientRole == 'CARETAKER'
+        && request.resource.data.sourceUserUid == request.auth.uid
+        && request.resource.data.actionTab == 'settings'
+        && request.resource.data.read == false
+        && isCaretakerAccount(request.resource.data.uid)
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.monitoredUserIds.hasAny([request.auth.uid])
+        && notificationId == ('caretaker_bond_' + request.auth.uid + '_' + request.resource.data.uid + '_' + request.resource.data.uid);
+    }
+
+    function isReverseCaretakerBondNotification(notificationId) {
+      return isCaretakerAccount(request.auth.uid)
+        && request.resource.data.uid is string
+        && request.resource.data.uid != request.auth.uid
+        && isUserAccount(request.resource.data.uid)
+        && request.resource.data.type == 'SYSTEM'
+        && request.resource.data.title == 'Caretaker Connection'
+        && request.resource.data.recipientRole == 'USER'
+        && request.resource.data.sourceUserUid == request.resource.data.uid
+        && request.resource.data.sourceCaretakerUid == request.auth.uid
+        && request.resource.data.actionTab == 'settings'
+        && request.resource.data.read == false
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.monitoredUserIds.hasAny([request.resource.data.uid])
+        && notificationId == ('caretaker_bond_' + request.auth.uid + '_' + request.resource.data.uid + '_' + request.resource.data.uid);
+    }
+
+    function isAuthorizedCaretakerRecipient(recipientUid) {
+      return isUserAccount(request.auth.uid)
+        && recipientUid is string
+        && recipientUid != request.auth.uid
+        && exists(/databases/$(database)/documents/users/$(recipientUid))
+        && get(/databases/$(database)/documents/users/$(recipientUid)).data.role == 'CARETAKER'
+        && get(/databases/$(database)/documents/users/$(recipientUid)).data.monitoredUserIds.hasAny([request.auth.uid]);
+    }
+
+    function isAssessmentCaretakerNotification(notificationId) {
+      return isAuthorizedCaretakerRecipient(request.resource.data.uid)
+        && request.resource.data.recipientRole == 'CARETAKER'
+        && request.resource.data.sourceUserUid == request.auth.uid
+        && request.resource.data.timestamp is string
+        && request.resource.data.actionTab == 'reports'
+        && request.resource.data.type in ['TEST_REPORT_READY', 'DAY_REPORT_READY', 'WEEK_REPORT_READY', 'MONTH_REPORT_READY', 'QA_REQUIRED']
+        && (
+          (
+            request.resource.data.type == 'TEST_REPORT_READY'
+            && request.resource.data.reportType == 'TEST'
+            && request.resource.data.reportId is string
+            && exists(/databases/$(database)/documents/reports_test/$(request.resource.data.reportId))
+            && get(/databases/$(database)/documents/reports_test/$(request.resource.data.reportId)).data.uid == request.auth.uid
+            && notificationId == ('notification_TEST_REPORT_READY_' + request.resource.data.reportId + '_' + request.resource.data.uid)
+          ) || (
+            request.resource.data.type == 'DAY_REPORT_READY'
+            && request.resource.data.reportType == 'DAY'
+            && request.resource.data.reportId is string
+            && exists(/databases/$(database)/documents/reports_day/$(request.resource.data.reportId))
+            && get(/databases/$(database)/documents/reports_day/$(request.resource.data.reportId)).data.uid == request.auth.uid
+            && notificationId == ('notification_DAY_REPORT_READY_' + request.resource.data.reportId + '_' + request.resource.data.uid)
+          ) || (
+            request.resource.data.type == 'WEEK_REPORT_READY'
+            && request.resource.data.reportType == 'WEEK'
+            && request.resource.data.reportId is string
+            && exists(/databases/$(database)/documents/reports_week/$(request.resource.data.reportId))
+            && get(/databases/$(database)/documents/reports_week/$(request.resource.data.reportId)).data.uid == request.auth.uid
+            && notificationId == ('notification_WEEK_REPORT_READY_' + request.resource.data.reportId + '_' + request.resource.data.uid)
+          ) || (
+            request.resource.data.type == 'MONTH_REPORT_READY'
+            && request.resource.data.reportType == 'MONTH'
+            && request.resource.data.reportId is string
+            && exists(/databases/$(database)/documents/reports_month/$(request.resource.data.reportId))
+            && get(/databases/$(database)/documents/reports_month/$(request.resource.data.reportId)).data.uid == request.auth.uid
+            && notificationId == ('notification_MONTH_REPORT_READY_' + request.resource.data.reportId + '_' + request.resource.data.uid)
+          ) || (
+            request.resource.data.type == 'QA_REQUIRED'
+            && (
+              (request.resource.data.observationId is string && notificationId == ('notification_QA_REQUIRED_' + request.resource.data.observationId + '_' + request.resource.data.uid))
+              || (request.resource.data.date is string && notificationId == ('notification_QA_REQUIRED_' + request.resource.data.date + '_' + request.resource.data.uid))
+            )
+          )
+        );
+    }
+
+    function isEmergencyCaretakerNotification(notificationId) {
+      return isAuthorizedCaretakerRecipient(request.resource.data.uid)
+        && request.resource.data.type == 'EMERGENCY'
+        && request.resource.data.recipientRole == 'CARETAKER'
+        && request.resource.data.sourceUserUid == request.auth.uid
+        && request.resource.data.timestamp is string
+        && request.resource.data.actionTab == 'emergency'
+        && request.resource.data.eventId is string
+        && notificationId == ('notification_EMERGENCY_' + request.resource.data.eventId + '_' + request.resource.data.uid);
+    }
+
+    function isMissedAssessmentCaretakerNotification(notificationId) {
+      return isAuthorizedCaretakerRecipient(request.resource.data.uid)
+        && request.resource.data.type == 'ASSESSMENT_MISSED'
+        && request.resource.data.recipientRole == 'CARETAKER'
+        && request.resource.data.sourceUserUid == request.auth.uid
+        && request.resource.data.timestamp is string
+        && request.resource.data.actionTab == 'home'
+        && request.resource.data.metadata.scheduleId is string
+        && notificationId == ('notification_ASSESSMENT_MISSED_' + request.resource.data.metadata.scheduleId + '_' + request.resource.data.uid);
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles: authenticated user can read & update their own profile; caretakers can read monitored users
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isCaretakerOf(userId) || isMappedBondTarget(userId));
+      allow list: if isSignedIn() && resource.data.role == 'CARETAKER'
+        && resource.data.monitoredUserIds.hasAny([request.auth.uid]);
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if (isSignedIn() && request.auth.uid == userId) || isUserCaretakerBondUpdate(userId);
+      allow delete: if false;
+    }
+
+    // Public discovery index: exact document reads only; no collection enumeration.
+    // It contains public ID, role, display name, and Firebase UID solely for an
+    // authenticated bond operation. Private profile fields are never stored here.
+    match /public_user_ids/{publicId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.publicId == publicId
+        && request.resource.data.publicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uniqueId
+        && request.resource.data.role == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        && request.resource.data.role in ['USER', 'CARETAKER']
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.displayName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName
+        && request.resource.data.keys().hasOnly(['uid', 'publicId', 'role', 'name', 'displayName', 'updatedAt']);
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.publicId == publicId
+        && request.resource.data.publicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uniqueId
+        && request.resource.data.role == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        && request.resource.data.role in ['USER', 'CARETAKER']
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.displayName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName
+        && request.resource.data.keys().hasOnly(['uid', 'publicId', 'role', 'name', 'displayName', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Schedules: owner or caretaker can read; owner can create and update
+    match /schedules/{scheduleId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // PMT-1: Reports (TEST, DAY, WEEK, MONTH derived reports): owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /reports/{reportId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // CONDITION authoritative temporal records. Writes remain CONDITION/Admin-owned.
+    function canReadCondition(targetUid) {
+      return isSignedIn() && (request.auth.uid == targetUid || isCaretakerOf(targetUid));
+    }
+
+    match /test/{observationId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /day/{observationId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /week/{observationId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /month/{observationId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /reports_test/{reportId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /reports_day/{reportId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /reports_week/{reportId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /reports_month/{reportId} {
+      allow get, list: if canReadCondition(resource.data.uid);
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // PMT-1: Raw Machine Test Records: owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /tests/{testId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // PMT-1: Day Records (Aggregates 3 tests + 10 QA): owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /day_records/{dayId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // PMT-1: Week Records: owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /week_records/{weekId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // PMT-1: Month Records: owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /month_records/{monthId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // PMT-1: QA Sessions: owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /qa_sessions/{sessionId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // PMT-2: C50 ML Results: owner or caretaker can read; owner can create & update; NO USER DELETE
+    match /c50_results/{resultId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Test sessions: owner can read and write
+    match /test_sessions/{sessionId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCaretakerOf(resource.data.userId));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Personal Health Baseline (PHB) records
+    match /phbs/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /phb/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /phb_records/{recordId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // System connection doc
+    match /system/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // In-app notifications: users can only read and update their own notification state.
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && (
+        request.resource.data.uid == request.auth.uid ||
+        isCaretakerBondNotification(notificationId) ||
+        isReverseCaretakerBondNotification(notificationId) ||
+        isAssessmentCaretakerNotification(notificationId) ||
+        isEmergencyCaretakerNotification(notificationId) ||
+        isMissedAssessmentCaretakerNotification(notificationId)
+      );
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,362 @@
+{
+  "entities": {
+    "TestObservation": {
+      "title": "TestObservation",
+      "description": "Instantaneous physiological observation result (temporal depth = 1).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique observation document identifier."
+        },
+        "uid": {
+          "type": "string",
+          "description": "Authenticated Firebase user ID."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Observation recording timestamp."
+        },
+        "temporalLevel": {
+          "type": "string",
+          "enum": ["TEST"],
+          "description": "Temporal evaluation level."
+        },
+        "inputStages": {
+          "type": "array",
+          "description": "11-channel stage array [0-5]."
+        },
+        "matchedPattern": {
+          "type": "string",
+          "description": "Matched reference pattern description."
+        },
+        "matchedSno": {
+          "type": "number",
+          "description": "Matched SNO row number in test dataset."
+        },
+        "distanceScore": {
+          "type": "number",
+          "description": "Euclidean stage distance score."
+        },
+        "matchStatus": {
+          "type": "string",
+          "enum": ["EXACT", "EQUIVALENT", "APPROXIMATE", "NO_ACCEPTABLE_MATCH"]
+        },
+        "classification": {
+          "type": "string",
+          "description": "Clinical or normative taxonomy category."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["NORMAL", "CONTROL", "MILD", "HIGH", "RISK"]
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Confidence score between 0.00 and 1.00."
+        },
+        "isFixture": {
+          "type": "boolean",
+          "description": "True if document is a safe initialization fixture."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "uid", "timestamp", "temporalLevel", "inputStages", "severity", "confidence", "createdAt"]
+    },
+    "DayObservation": {
+      "title": "DayObservation",
+      "description": "Diurnal longitudinal observation result spanning 3 sequential TEST observations.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "temporalLevel": {
+          "type": "string",
+          "enum": ["DAY"]
+        },
+        "observationCount": {
+          "type": "number",
+          "description": "Number of contained observations (canonical = 3)."
+        },
+        "observationIds": {
+          "type": "array"
+        },
+        "initialSeverity": {
+          "type": "string"
+        },
+        "peakSeverity": {
+          "type": "string"
+        },
+        "finalSeverity": {
+          "type": "string"
+        },
+        "trend": {
+          "type": "string"
+        },
+        "isFixture": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "uid", "timestamp", "temporalLevel", "observationCount", "trend", "createdAt"]
+    },
+    "WeekObservation": {
+      "title": "WeekObservation",
+      "description": "Weekly longitudinal observation result (temporal depth = 21).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "temporalLevel": { "type": "string", "enum": ["WEEK"] },
+        "observationCount": { "type": "number" },
+        "trend": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "timestamp", "temporalLevel", "observationCount", "createdAt"]
+    },
+    "MonthObservation": {
+      "title": "MonthObservation",
+      "description": "Monthly longitudinal observation result (temporal depth = 84).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "temporalLevel": { "type": "string", "enum": ["MONTH"] },
+        "observationCount": { "type": "number" },
+        "trend": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "timestamp", "temporalLevel", "observationCount", "createdAt"]
+    },
+    "TestReport": {
+      "title": "TestReport",
+      "description": "Verified BAND Condition Report for instantaneous TEST observation.",
+      "type": "object",
+      "properties": {
+        "reportId": {
+          "type": "string",
+          "description": "Unique report document identifier (e.g. rep_test_...)."
+        },
+        "uid": {
+          "type": "string",
+          "description": "Authenticated user identifier."
+        },
+        "temporalLevel": {
+          "type": "string",
+          "enum": ["TEST"]
+        },
+        "temporalObservationsCount": {
+          "type": "number"
+        },
+        "classification": {
+          "type": "string"
+        },
+        "severityScore": {
+          "type": "number"
+        },
+        "confidenceLevel": {
+          "type": "string"
+        },
+        "confidenceScore": {
+          "type": "number"
+        },
+        "trend": {
+          "type": "string"
+        },
+        "matchStatus": {
+          "type": "string"
+        },
+        "primaryPattern": {
+          "type": "string"
+        },
+        "inputStages": {
+          "type": "array"
+        },
+        "matchedStages": {
+          "type": "array"
+        },
+        "referenceDatasetSno": {
+          "type": "number"
+        },
+        "distanceScore": {
+          "type": "number"
+        },
+        "conditionSummary": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["COMPLETED", "VERIFIED", "ARCHIVED"]
+        },
+        "isFixture": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "reportId",
+        "uid",
+        "temporalLevel",
+        "classification",
+        "severityScore",
+        "confidenceScore",
+        "matchStatus",
+        "inputStages",
+        "status",
+        "createdAt"
+      ]
+    },
+    "DayReport": {
+      "title": "DayReport",
+      "description": "Aggregated condition report spanning 3 TEST observations across diurnal cycle.",
+      "type": "object",
+      "properties": {
+        "reportId": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string"
+        },
+        "temporalLevel": {
+          "type": "string",
+          "enum": ["DAY"]
+        },
+        "observationCount": {
+          "type": "number"
+        },
+        "initialSeverity": {
+          "type": "string"
+        },
+        "peakSeverity": {
+          "type": "string"
+        },
+        "finalSeverity": {
+          "type": "string"
+        },
+        "meanSeverity": {
+          "type": "number"
+        },
+        "trend": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "patternPersistence": {
+          "type": "number"
+        },
+        "dominantPattern": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["COMPLETED", "VERIFIED", "ARCHIVED"]
+        },
+        "isFixture": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "reportId",
+        "uid",
+        "temporalLevel",
+        "observationCount",
+        "trend",
+        "dominantPattern",
+        "status",
+        "createdAt"
+      ]
+    },
+    "WeekReport": {
+      "title": "WeekReport",
+      "description": "Aggregated condition report spanning weekly longitudinal sequence (21 observations).",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string" },
+        "uid": { "type": "string" },
+        "temporalLevel": { "type": "string", "enum": ["WEEK"] },
+        "observationCount": { "type": "number" },
+        "trend": { "type": "string" },
+        "status": { "type": "string", "enum": ["COMPLETED", "VERIFIED", "ARCHIVED"] },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reportId", "uid", "temporalLevel", "observationCount", "trend", "status", "createdAt"]
+    },
+    "MonthReport": {
+      "title": "MonthReport",
+      "description": "Aggregated condition report spanning monthly longitudinal sequence (84 observations).",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string" },
+        "uid": { "type": "string" },
+        "temporalLevel": { "type": "string", "enum": ["MONTH"] },
+        "observationCount": { "type": "number" },
+        "trend": { "type": "string" },
+        "status": { "type": "string", "enum": ["COMPLETED", "VERIFIED", "ARCHIVED"] },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reportId", "uid", "temporalLevel", "observationCount", "trend", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/test/{observationId}": {
+      "schema": "TestObservation",
+      "description": "Instantaneous physiological observations (temporal depth = 1)."
+    },
+    "/day/{observationId}": {
+      "schema": "DayObservation",
+      "description": "Diurnal physiological observations (temporal depth = 3)."
+    },
+    "/week/{observationId}": {
+      "schema": "WeekObservation",
+      "description": "Weekly physiological observations (temporal depth = 21)."
+    },
+    "/month/{observationId}": {
+      "schema": "MonthObservation",
+      "description": "Monthly physiological observations (temporal depth = 84)."
+    },
+    "/reports_test/{reportId}": {
+      "schema": "TestReport",
+      "description": "Stored instantaneous Condition Reports with authenticated UID isolation."
+    },
+    "/reports_day/{reportId}": {
+      "schema": "DayReport",
+      "description": "Stored diurnal Condition Reports with authenticated UID isolation."
+    },
+    "/reports_week/{reportId}": {
+      "schema": "WeekReport",
+      "description": "Stored weekly Condition Reports with authenticated UID isolation."
+    },
+    "/reports_month/{reportId}": {
+      "schema": "MonthReport",
+      "description": "Stored monthly Condition Reports with authenticated UID isolation."
+    }
+  }
+}

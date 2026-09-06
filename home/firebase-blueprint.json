@@ -1,0 +1,224 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile in GOATEST health-monitoring platform",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["USER", "CARETAKER", "ADMIN"] },
+        "monitoredUserIds": { "type": "array", "items": { "type": "string" } },
+        "themePreference": { "type": "string", "enum": ["WHITE", "DEFAULT", "DARK"] },
+        "accentColor": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "ScheduleItem": {
+      "title": "ScheduleItem",
+      "description": "Assessment timetable item for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "time": { "type": "string" },
+        "scheduledDate": { "type": "string" },
+        "status": { "type": "string" },
+        "organTarget": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "time", "scheduledDate"]
+    },
+    "TestRecord": {
+      "title": "TestRecord",
+      "description": "Untouched raw machine test/assessment telemetry record",
+      "type": "object",
+      "properties": {
+        "testId": { "type": "string" },
+        "userId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "target": { "type": "string" },
+        "organ": { "type": "string" },
+        "status": { "type": "string", "enum": ["COMPLETED", "PENDING", "IN_PROGRESS", "FAILED"] },
+        "source": { "type": "string" },
+        "rawData": { "type": "object" },
+        "reportReference": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["testId", "userId", "sessionId", "timestamp", "target", "status", "rawData"]
+    },
+    "DayRecord": {
+      "title": "DayRecord",
+      "description": "Aggregates day tests, QA session, and raw condition/ML inputs/outputs",
+      "type": "object",
+      "properties": {
+        "dayId": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "testReferences": { "type": "array", "items": { "type": "string" } },
+        "qaSessionReference": { "type": "string" },
+        "rawConditionInput": { "type": "object" },
+        "rawMLInput": { "type": "object" },
+        "rawMLOutput": { "type": "object" },
+        "readableReportReference": { "type": "string" },
+        "status": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["dayId", "userId", "date", "testReferences", "status"]
+    },
+    "WeekRecord": {
+      "title": "WeekRecord",
+      "description": "Aggregates day records for weekly longitudinal analysis",
+      "type": "object",
+      "properties": {
+        "weekId": { "type": "string" },
+        "userId": { "type": "string" },
+        "weekStart": { "type": "string" },
+        "weekEnd": { "type": "string" },
+        "dayReferences": { "type": "array", "items": { "type": "string" } },
+        "rawMLInput": { "type": "object" },
+        "rawMLOutput": { "type": "object" },
+        "readableReportReference": { "type": "string" },
+        "status": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["weekId", "userId", "weekStart", "weekEnd", "dayReferences", "status"]
+    },
+    "MonthRecord": {
+      "title": "MonthRecord",
+      "description": "Aggregates week records for monthly longitudinal analysis",
+      "type": "object",
+      "properties": {
+        "monthId": { "type": "string" },
+        "userId": { "type": "string" },
+        "month": { "type": "integer" },
+        "year": { "type": "integer" },
+        "weekReferences": { "type": "array", "items": { "type": "string" } },
+        "rawMLInput": { "type": "object" },
+        "rawMLOutput": { "type": "object" },
+        "readableReportReference": { "type": "string" },
+        "status": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["monthId", "userId", "month", "year", "weekReferences", "status"]
+    },
+    "ReportRecord": {
+      "title": "ReportRecord",
+      "description": "Human-readable derived report representation for Home and Report Home",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string" },
+        "userId": { "type": "string" },
+        "reportType": { "type": "string", "enum": ["TEST", "DAY", "WEEK", "MONTH"] },
+        "referenceId": { "type": "string" },
+        "title": { "type": "string" },
+        "generatedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "COMPLETED", "ARCHIVED"] },
+        "rawSourceReference": { "type": "object" },
+        "readableContent": { "type": "object" },
+        "visualizationData": { "type": "object" },
+        "modelVersion": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["reportId", "userId", "reportType", "referenceId", "title", "generatedAt", "status", "rawSourceReference", "readableContent"]
+    },
+    "QaSessionRecord": {
+      "title": "QaSessionRecord",
+      "description": "Daily 10-question QA session record linked to DAY record",
+      "type": "object",
+      "properties": {
+        "qaSessionId": { "type": "string" },
+        "userId": { "type": "string" },
+        "dayId": { "type": "string" },
+        "generatedAt": { "type": "string" },
+        "questions": { "type": "array", "items": { "type": "object" } },
+        "answers": { "type": "object" },
+        "completionStatus": { "type": "string", "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["qaSessionId", "userId", "dayId", "generatedAt", "questions", "answers", "completionStatus"]
+    },
+    "C50ResultPacket": {
+      "title": "C50ResultPacket",
+      "description": "Raw untouched external C50 Machine Learning inference output packet and metadata",
+      "type": "object",
+      "properties": {
+        "version": { "type": "string" },
+        "resultId": { "type": "string" },
+        "sourceInputId": { "type": "string" },
+        "sourceCmPacketId": { "type": "string" },
+        "userId": { "type": "string" },
+        "milestone": { "type": "string", "enum": ["TEST", "DAY", "WEEK", "MONTH"] },
+        "timestamp": { "type": "string" },
+        "modelVersion": { "type": "string" },
+        "status": { "type": "string", "enum": ["SUCCESS", "ML_NOT_CONFIGURED", "FAILED", "INVALID_INPUT"] },
+        "predictionPayload": { "type": "object" },
+        "featureSummary": { "type": "object" },
+        "trendSummary": { "type": "object" },
+        "classification": { "type": "string" },
+        "confidence": { "type": "number" },
+        "rawResponse": { "type": "object" },
+        "errorMessage": { "type": "string" },
+        "isFixture": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["version", "resultId", "sourceInputId", "sourceCmPacketId", "userId", "milestone", "timestamp", "modelVersion", "status", "rawResponse"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile collection"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "ScheduleItem",
+      "description": "Daily assessment schedules"
+    },
+    "/tests/{testId}": {
+      "schema": "TestRecord",
+      "description": "Raw machine test and assessment telemetry records"
+    },
+    "/day_records/{dayId}": {
+      "schema": "DayRecord",
+      "description": "Daily aggregated test records and raw ML inputs/outputs"
+    },
+    "/week_records/{weekId}": {
+      "schema": "WeekRecord",
+      "description": "Weekly aggregated records and longitudinal inputs"
+    },
+    "/month_records/{monthId}": {
+      "schema": "MonthRecord",
+      "description": "Monthly aggregated records and trend analysis"
+    },
+    "/reports/{reportId}": {
+      "schema": "ReportRecord",
+      "description": "User human-readable derived assessment reports (TEST, DAY, WEEK, MONTH)"
+    },
+    "/qa_sessions/{sessionId}": {
+      "schema": "QaSessionRecord",
+      "description": "Daily QA session assessments linked to day records"
+    },
+    "/c50_results/{resultId}": {
+      "schema": "C50ResultPacket",
+      "description": "Raw machine learning inference outputs from external C50 engine"
+    }
+  }
+}

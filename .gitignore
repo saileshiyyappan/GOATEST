@@ -56,3 +56,6 @@ folder-list.txt
 
 # Local Gradle distribution
 /gradle/
+
+# Generated C50 reports
+/c50/data/reports/

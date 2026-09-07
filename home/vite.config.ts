@@ -14,7 +14,16 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
-      dedupe: ['react', 'react-dom', 'motion'],
+      dedupe: [
+        'react',
+        'react-dom',
+        'motion',
+        'lucide-react',
+        '@capacitor/app',
+        '@capacitor/core',
+        '@capacitor-community/bluetooth-le',
+        'pdfkit',
+      ],
       alias: {
         '@': path.resolve(__dirname, '.'),
         'pdfkit-browser-entry': path.resolve(__dirname, 'node_modules/pdfkit/js/pdfkit.browser.js'),

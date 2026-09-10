@@ -17,6 +17,7 @@
     "pmt3:integration:test": "tsx src/pmt3IntegrationRunner.ts",
     "pmt4:runtime:test": "tsx src/pmt4RuntimeRunner.ts",
     "pmt5:runtime:test": "tsx src/pmt5RuntimeRunner.ts",
+    "accuracy:final:test": "tsx src/finalAccuracyRunner.ts",
     "pmt6:runtime:test": "tsx src/pmt6RuntimeRunner.ts",
     "pmtp1:runtime:test": "tsx src/pmtP1RuntimeRunner.ts",
     "pmtp2:runtime:test": "tsx src/pmtP2RuntimeRunner.ts",

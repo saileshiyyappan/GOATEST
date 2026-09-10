@@ -25,8 +25,7 @@ import type {
   WeekNotificationPayload,
 } from './conditionTypes';
 import { buildConditionReportDocument, buildMonthReportDocument, buildAuthoritativeReport } from './reportGenerator';
-import { reportStore } from './reportStore';
-import { firestoreDatabaseService } from '../firebase/firestoreService';
+import { pureConditionPersistence, type ConditionPersistence } from './conditionPersistence';
 
 export interface RawDatasetRow {
   sno: string;
@@ -203,12 +202,18 @@ export class ConditionEngine {
   private dayCsvPath: string;
   private weekCsvPath: string;
   private monthCsvPath: string;
+  private persistence: ConditionPersistence = pureConditionPersistence;
 
   constructor(datasetRootDir = process.cwd()) {
     this.testCsvPath = path.join(datasetRootDir, 'data', 'test_dataset.csv');
     this.dayCsvPath = path.join(datasetRootDir, 'data', 'day_dataset.csv');
     this.weekCsvPath = path.join(datasetRootDir, 'data', 'week_dataset.csv');
     this.monthCsvPath = path.join(datasetRootDir, 'data', 'month_dataset.csv');
+  }
+
+  /** Inject application persistence only at the server/HOME boundary. */
+  public setPersistence(persistence: ConditionPersistence): void {
+    this.persistence = persistence;
   }
 
   /**
@@ -554,7 +559,7 @@ export class ConditionEngine {
     if (Array.isArray(input.stageVector) && input.stageVector.length === 11) {
       for (let i = 0; i < 11; i++) {
         const val = input.stageVector[i];
-        if (typeof val !== 'number' || isNaN(val) || !isFinite(val) || val < 0 || val > 5) {
+        if (typeof val !== 'number' || !Number.isInteger(val) || !Number.isFinite(val) || val < 0 || val > 5) {
           throw new Error(`Invalid stage value in stageVector at index ${i}: must be integer in 0-5`);
         }
       }
@@ -593,14 +598,14 @@ export class ConditionEngine {
           matchedVector: row.vector,
           distance: 0.0,
           matchType: 'EXACT',
-          primary_taxonomy: row.primary_taxonomy,
-          secondary_taxonomy: row.secondary_taxonomy,
-          pattern_label: row.pattern_label,
-          severity_label: row.severity_label,
-          severity_score: row.severity_score,
-          confidence_score: row.confidence_score,
-          confidence_level: row.confidence_level,
-          trend_label: row.trend_label,
+          primary_taxonomy: computed.primary_taxonomy,
+          secondary_taxonomy: computed.secondary_taxonomy,
+          pattern_label: computed.pattern_label,
+          severity_label: computed.severity_label,
+          severity_score: computed.severity_score,
+          confidence_score: computed.confidence_score,
+          confidence_level: computed.confidence_level,
+          trend_label: 'N/A',
           isLabelInconsistent,
         };
       }
@@ -652,7 +657,7 @@ export class ConditionEngine {
       };
     } else if (
       inputComputed.primary_taxonomy === rowComputed.primary_taxonomy &&
-      Math.abs(parseFloat(inputComputed.severity_score) - parseFloat(bestRow.severity_score)) <= 0.05
+      Math.abs(parseFloat(inputComputed.severity_score) - parseFloat(rowComputed.severity_score)) <= 0.05
     ) {
       matchType = 'EQUIVALENT';
     }
@@ -666,14 +671,14 @@ export class ConditionEngine {
       matchedVector: bestRow.vector,
       distance: Number(minDistance.toFixed(3)),
       matchType,
-      primary_taxonomy: bestRow.primary_taxonomy,
-      secondary_taxonomy: bestRow.secondary_taxonomy,
-      pattern_label: bestRow.pattern_label,
-      severity_label: bestRow.severity_label,
-      severity_score: bestRow.severity_score,
-      confidence_score: bestRow.confidence_score,
-      confidence_level: bestRow.confidence_level,
-      trend_label: bestRow.trend_label,
+      primary_taxonomy: inputComputed.primary_taxonomy,
+      secondary_taxonomy: inputComputed.secondary_taxonomy,
+      pattern_label: inputComputed.pattern_label,
+      severity_label: inputComputed.severity_label,
+      severity_score: inputComputed.severity_score,
+      confidence_score: inputComputed.confidence_score,
+      confidence_level: inputComputed.confidence_level,
+      trend_label: 'N/A',
       isLabelInconsistent,
     };
   }
@@ -689,14 +694,14 @@ export class ConditionEngine {
         matchedVector: row.vector,
         distance: 0,
         matchType: 'EXACT',
-        primary_taxonomy: row.primary_taxonomy,
-        secondary_taxonomy: row.secondary_taxonomy,
-        pattern_label: row.pattern_label,
-        severity_label: row.severity_label,
-        severity_score: row.severity_score,
-        confidence_score: row.confidence_score,
-        confidence_level: row.confidence_level,
-        trend_label: row.trend_label,
+        primary_taxonomy: computed.primary_taxonomy,
+        secondary_taxonomy: computed.secondary_taxonomy,
+        pattern_label: computed.pattern_label,
+        severity_label: computed.severity_label,
+        severity_score: computed.severity_score,
+        confidence_score: computed.confidence_score,
+        confidence_level: computed.confidence_level,
+        trend_label: 'N/A',
         isLabelInconsistent: row.primary_taxonomy !== computed.primary_taxonomy || row.severity_label !== computed.severity_label || row.pattern_label !== computed.pattern_label,
       },
       rowsChecked: dataset.length,
@@ -866,7 +871,6 @@ STATUS=NO_ACCEPTABLE_MATCH`);
     report.target = inputPayload?.target;
     report.matchedTestRow = matchedTestRow ? toCompleteTestCsvRow(matchedTestRow) : undefined;
     report.sourceCmPacket = inputPayload?.packetType === 'CM_PACKET' ? inputPayload : undefined;
-    reportStore.saveReport(report);
 
     // 7. Persist to Firestore: TEST Observation first, then TEST Report
     const obsPayload = {
@@ -890,16 +894,8 @@ STATUS=NO_ACCEPTABLE_MATCH`);
       createdAt: timestamp,
     };
 
-    const persistence = options?.persist === false
-      ? null
-      : {
-          observation: await firestoreDatabaseService.writeTestObservation(uid, obsPayload),
-          report: await firestoreDatabaseService.writeTestReport(uid, {
-            ...report,
-            reportId,
-            isFixture: Boolean(inputPayload?.isFixture),
-          }),
-        };
+    // C50 returns the computed report. HOME/server persistence happens after this result.
+    const persistence = null;
 
     // 8. Terminal Logging
     console.log(`[CONDITION TEST]
@@ -1085,7 +1081,7 @@ STATUS=COMPLETED`);
     const { uid } = options;
 
     // 1. UID Ownership Validation
-    const authValidation = firestoreDatabaseService.validateAuthenticatedOwnership(uid);
+    const authValidation = this.persistence.validateAuthenticatedOwnership(uid);
     if (!authValidation.isValid) {
       return {
         success: false,
@@ -1134,7 +1130,7 @@ STATUS=COMPLETED`);
       }
     } else if (options.testObservationIds && options.testObservationIds.length === 3) {
       testObservationIds = options.testObservationIds;
-      const batchRes = await firestoreDatabaseService.getTestObservationsByIds(authUid, testObservationIds);
+      const batchRes = await this.persistence.getTestObservationsByIds(authUid, testObservationIds);
       if (!batchRes.success || !batchRes.data || batchRes.data.length !== 3) {
         if (batchRes.status === 'UID_MISMATCH_REJECTED') {
           return {
@@ -1163,7 +1159,7 @@ STATUS=COMPLETED`);
       testVectors = [v0, v1, v2];
     } else {
       // Query recent 3 TEST observations from storage for this user
-      const userTests = await firestoreDatabaseService.getTestObservationsByUid(authUid, 3);
+      const userTests = await this.persistence.getTestObservationsByUid(authUid, 3);
       if (userTests.length < 3) {
         return {
           success: false,
@@ -1195,9 +1191,8 @@ STATUS=COMPLETED`);
         uid: authUid,
         status: options.qaData.status || 'SUBMITTED',
       };
-      await firestoreDatabaseService.writeQA(authUid, resolvedQAData);
     } else if (options.qaId) {
-      const qaRes = await firestoreDatabaseService.getQA(authUid, options.qaId);
+      const qaRes = await this.persistence.getQA(authUid, options.qaId);
       if (qaRes.success && qaRes.data) {
         qaStatus = 'AVAILABLE';
         resolvedQAData = qaRes.data;
@@ -1372,9 +1367,6 @@ STATUS=NO_ACCEPTABLE_MATCH`);
       isFixture: Boolean(options.isFixture),
     };
 
-    const obsWriteResult = await firestoreDatabaseService.writeDayObservation(authUid, dayObsPayload);
-    const reportWriteResult = await firestoreDatabaseService.writeDayReport(authUid, dayReportPayload);
-
     // Save Day Report in authoritative store
     const dayAuthoritativeReport = buildAuthoritativeReport({
       temporalLevel: 'DAY',
@@ -1404,7 +1396,11 @@ STATUS=NO_ACCEPTABLE_MATCH`);
         data: resolvedQAData,
       },
     });
-    reportStore.saveReport(dayAuthoritativeReport);
+    const obsWriteResult = await this.persistence.writeDayObservation(authUid, dayObsPayload);
+    const reportWriteResult = await this.persistence.writeDayReport(authUid, dayAuthoritativeReport);
+    if (obsWriteResult?.success === false || reportWriteResult?.success === false) {
+      throw new Error('DAY_PERSISTENCE_FAILED');
+    }
 
     // 11. Dispatch Notifications (User + Caretaker)
     const userNotif: DayNotificationPayload = {
@@ -1436,9 +1432,6 @@ STATUS=NO_ACCEPTABLE_MATCH`);
       timestamp,
       delivered: true,
     };
-
-    await firestoreDatabaseService.writeNotification(authUid, userNotif);
-    await firestoreDatabaseService.writeNotification(authUid, caretakerNotif);
 
     // 12. Terminal Output
     console.log(`[CONDITION DAY]
@@ -1619,7 +1612,7 @@ STATUS=COMPLETED`);
     const { uid } = options;
 
     // 1. UID Ownership Validation
-    const authValidation = firestoreDatabaseService.validateAuthenticatedOwnership(uid);
+    const authValidation = this.persistence.validateAuthenticatedOwnership(uid);
     if (!authValidation.isValid) {
       return {
         success: false,
@@ -1705,7 +1698,7 @@ STATUS=COMPLETED`);
       }
     } else if (options.dayObservationIds && options.dayObservationIds.length === 7) {
       dayObservationIds = options.dayObservationIds;
-      const batchRes = await firestoreDatabaseService.getDayObservationsByIds(authUid, dayObservationIds);
+      const batchRes = await this.persistence.getDayObservationsByIds(authUid, dayObservationIds);
       if (!batchRes.success || !batchRes.data || batchRes.data.length !== 7) {
         if (batchRes.status === 'UID_MISMATCH_REJECTED') {
           return {
@@ -1777,7 +1770,7 @@ STATUS=COMPLETED`);
       }
     } else {
       // Query recent 7 DAY observations from storage for this user
-      const userDays = await firestoreDatabaseService.getDayObservationsByUid(authUid, 7);
+      const userDays = await this.persistence.getDayObservationsByUid(authUid, 7);
       if (userDays.length < 7) {
         return {
           success: false,
@@ -2009,8 +2002,8 @@ STATUS=NO_ACCEPTABLE_MATCH`);
       weekEnd: weeklyWindow?.end || null,
     };
 
-    const obsWriteResult = await firestoreDatabaseService.writeWeekObservation(authUid, weekObsPayload);
-    const reportWriteResult = await firestoreDatabaseService.writeWeekReport(authUid, weekReportPayload);
+    const obsWriteResult = { success: true, status: 'COMPUTED', persistedLocation: 'NONE' };
+    const reportWriteResult = { success: true, status: 'COMPUTED', persistedLocation: 'NONE' };
 
     // Save Week Report in authoritative store
     const weekAuthoritativeReport = buildAuthoritativeReport({
@@ -2038,7 +2031,6 @@ STATUS=NO_ACCEPTABLE_MATCH`);
       patternPersistence,
       temporalObservationsCount: 21,
     });
-    reportStore.saveReport(weekAuthoritativeReport);
 
     // 10. Dispatch Notifications (User + Caretaker)
     const userNotif: WeekNotificationPayload = {
@@ -2070,9 +2062,6 @@ STATUS=NO_ACCEPTABLE_MATCH`);
       timestamp,
       delivered: true,
     };
-
-    await firestoreDatabaseService.writeNotification(authUid, userNotif);
-    await firestoreDatabaseService.writeNotification(authUid, caretakerNotif);
 
     // 11. Terminal Output
     console.log(`[CONDITION WEEK]
@@ -2202,7 +2191,7 @@ STATUS=COMPLETED`);
       };
     }
 
-    const authValidation = firestoreDatabaseService.validateAuthenticatedOwnership(uid);
+    const authValidation = this.persistence.validateAuthenticatedOwnership(uid);
     if (!authValidation.isValid) {
       return {
         success: false,
@@ -2217,7 +2206,7 @@ STATUS=COMPLETED`);
     let resolvedWeeks: any[] = Array.isArray(weekObservations) ? weekObservations : [];
     let resolvedWeekIds: string[] = Array.isArray(weekObservationIds) ? weekObservationIds : [];
     if (!Array.isArray(weekVectors) && resolvedWeekIds.length === 4) {
-      const batchRes = await firestoreDatabaseService.getWeekObservationsByIds(uid, resolvedWeekIds);
+      const batchRes = await this.persistence.getWeekObservationsByIds(uid, resolvedWeekIds);
       if (!batchRes.success || !batchRes.data || batchRes.data.length !== 4) {
         return { success: false, status: 'MONTH_NOT_ELIGIBLE', temporalLevel: 'MONTH', matchStatus: 'NO_ACCEPTABLE_MATCH', error: batchRes.error || 'Four completed WEEK observations are required.' } as MonthConditionResult;
       }
@@ -2276,8 +2265,6 @@ STATUS=COMPLETED`);
       isFixture: Boolean(isFixture),
     };
 
-    const obsWriteResult = await firestoreDatabaseService.writeMonthObservation(uid, monthObsDoc);
-
     const initialSeverity = matchedRecord.severity_label;
     const peakSeverity = matchedRecord.severity_label;
     const finalSeverity = matchedRecord.severity_label;
@@ -2319,8 +2306,11 @@ STATUS=COMPLETED`);
     };
 
     const authoritativeReport = buildMonthReportDocument(intermediateResult, uid, weekObservations);
-    reportStore.saveReport(authoritativeReport);
-    const reportWriteResult = await firestoreDatabaseService.writeMonthReport(uid, authoritativeReport);
+    const obsWriteResult = await this.persistence.writeMonthObservation(uid, monthObsDoc);
+    const reportWriteResult = await this.persistence.writeMonthReport(uid, authoritativeReport);
+    if (obsWriteResult?.success === false || reportWriteResult?.success === false) {
+      throw new Error('MONTH_PERSISTENCE_FAILED');
+    }
 
     const userNotif: MonthNotificationPayload = {
       notificationId: `notif_usr_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -2336,7 +2326,6 @@ STATUS=COMPLETED`);
       timestamp: nowIso,
       delivered: true,
     };
-    await firestoreDatabaseService.writeNotification(uid, userNotif);
 
     const caretakerNotif: MonthNotificationPayload = {
       notificationId: `notif_car_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -2352,7 +2341,6 @@ STATUS=COMPLETED`);
       timestamp: nowIso,
       delivered: true,
     };
-    await firestoreDatabaseService.writeNotification(uid, caretakerNotif);
 
     return {
       ...intermediateResult,

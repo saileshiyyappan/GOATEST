@@ -109,30 +109,38 @@ export class ConditionDatabaseService {
       };
     }
 
-    if (typeof window !== 'undefined') {
-      const currentAuthUser = firebaseAuth?.currentUser;
-      if (currentAuthUser) {
-        if (currentAuthUser.uid !== suppliedUid.trim()) {
-          return {
-            isValid: false,
-            authUid: currentAuthUser.uid,
-            status: 'CLOUD_PERMISSION_DENIED',
-            error: `UID mismatch: Supplied UID (${suppliedUid}) does not match authenticated Firebase UID (${currentAuthUser.uid}).`,
-          };
-        }
-        return {
-          isValid: true,
-          authUid: currentAuthUser.uid,
-          status: 'CLOUD_CONNECTED',
-        };
-      }
+    const runtimeHasActiveClientAuth = typeof window !== 'undefined' && !!firebaseAuth?.currentUser && !!firestoreDb;
+    if (!runtimeHasActiveClientAuth) {
+      return {
+        isValid: false,
+        authUid: null,
+        status: 'CLOUD_PERMISSION_DENIED',
+        error: 'Authenticated Firebase browser session is required before persisting V1 health data. Server-only or synthetic UID values are not permitted.',
+      };
     }
 
-    // In server environment or background runner when verified UID is supplied:
+    const currentAuthUser = firebaseAuth.currentUser;
+    if (currentAuthUser) {
+      if (currentAuthUser.uid !== suppliedUid.trim()) {
+        return {
+          isValid: false,
+          authUid: currentAuthUser.uid,
+          status: 'CLOUD_PERMISSION_DENIED',
+          error: `UID mismatch: Supplied UID (${suppliedUid}) does not match authenticated Firebase UID (${currentAuthUser.uid}).`,
+        };
+      }
+      return {
+        isValid: true,
+        authUid: currentAuthUser.uid,
+        status: 'CLOUD_CONNECTED',
+      };
+    }
+
     return {
-      isValid: true,
-      authUid: suppliedUid.trim(),
-      status: 'CLOUD_CONNECTED',
+      isValid: false,
+      authUid: null,
+      status: 'CLOUD_AUTH_REQUIRED',
+      error: 'Authenticated Firebase user session is unavailable.',
     };
   }
 
@@ -187,40 +195,41 @@ export class ConditionDatabaseService {
 
     this.observationCache.set(docId, payload);
 
-    if (firebaseAuth?.currentUser?.uid === validation.authUid) {
-      try {
-        const docRef = doc(firestoreDb, 'test', docId);
-        await setDoc(docRef, payload, { merge: true });
-
-        return {
-          success: true,
-          status: 'CLOUD_CONNECTED',
-          persistedLocation: 'FIRESTORE',
-          collection: 'test',
-          documentId: docId,
-          uid: validation.authUid!,
-        };
-      } catch (err: any) {
-        return {
-          success: false,
-          status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
-          persistedLocation: 'LOCAL_SECURE_STORAGE',
-          collection: 'test',
-          documentId: docId,
-          uid: authUid,
-          error: err.message,
-        };
-      }
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_PERMISSION_DENIED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'test',
+        documentId: docId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting test observations.',
+      };
     }
 
-    return {
-      success: true,
-      status: 'CLOUD_CONNECTED',
-      persistedLocation: 'LOCAL_SECURE_STORAGE',
-      collection: 'test',
-      documentId: docId,
-      uid: validation.authUid!,
-    };
+    try {
+      const docRef = doc(firestoreDb, 'test', docId);
+      await setDoc(docRef, payload, { merge: true });
+
+      return {
+        success: true,
+        status: 'CLOUD_CONNECTED',
+        persistedLocation: 'FIRESTORE',
+        collection: 'test',
+        documentId: docId,
+        uid: validation.authUid!,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'test',
+        documentId: docId,
+        uid: authUid,
+        error: err.message,
+      };
+    }
   }
 
   async writeDayObservation(uid: string, data: any): Promise<DatabaseWriteResult> {
@@ -384,40 +393,41 @@ export class ConditionDatabaseService {
 
     this.observationCache.set(docId, payload);
 
-    if (firebaseAuth?.currentUser?.uid === validation.authUid) {
-      try {
-        const docRef = doc(firestoreDb, 'week', docId);
-        await setDoc(docRef, payload, { merge: true });
-
-        return {
-          success: true,
-          status: 'CLOUD_CONNECTED',
-          persistedLocation: 'FIRESTORE',
-          collection: 'week',
-          documentId: docId,
-          uid: validation.authUid!,
-        };
-      } catch (err: any) {
-        return {
-          success: false,
-          status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
-          persistedLocation: 'LOCAL_SECURE_STORAGE',
-          collection: 'week',
-          documentId: docId,
-          uid: authUid,
-          error: err.message,
-        };
-      }
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_PERMISSION_DENIED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'week',
+        documentId: docId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting week observations.',
+      };
     }
 
-    return {
-      success: true,
-      status: 'CLOUD_CONNECTED',
-      persistedLocation: 'LOCAL_SECURE_STORAGE',
-      collection: 'week',
-      documentId: docId,
-      uid: validation.authUid!,
-    };
+    try {
+      const docRef = doc(firestoreDb, 'week', docId);
+      await setDoc(docRef, payload, { merge: true });
+
+      return {
+        success: true,
+        status: 'CLOUD_CONNECTED',
+        persistedLocation: 'FIRESTORE',
+        collection: 'week',
+        documentId: docId,
+        uid: validation.authUid!,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'week',
+        documentId: docId,
+        uid: authUid,
+        error: err.message,
+      };
+    }
   }
 
   async writeMonthObservation(uid: string, data: any): Promise<DatabaseWriteResult> {
@@ -440,6 +450,18 @@ export class ConditionDatabaseService {
         documentId: docId,
         uid: authUid,
         error: validation.error,
+      };
+    }
+
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_PERMISSION_DENIED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'month',
+        documentId: docId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting month observations.',
       };
     }
 
@@ -511,6 +533,18 @@ export class ConditionDatabaseService {
         documentId: reportId,
         uid: authUid,
         error: validation.error,
+      };
+    }
+
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_AUTH_REQUIRED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'reports_test',
+        documentId: reportId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting test reports.',
       };
     }
 
@@ -622,40 +656,41 @@ export class ConditionDatabaseService {
     reportStore.saveReport(payload as any);
     this.dayReportCache.set(reportId, payload);
 
-    if (firebaseAuth?.currentUser?.uid === validation.authUid) {
-      try {
-        const reportRef = doc(firestoreDb, 'reports_day', reportId);
-        await setDoc(reportRef, payload, { merge: true });
-
-        return {
-          success: true,
-          status: 'CLOUD_CONNECTED',
-          persistedLocation: 'FIRESTORE',
-          collection: 'reports_day',
-          documentId: reportId,
-          uid: validation.authUid!,
-        };
-      } catch (err: any) {
-        return {
-          success: false,
-          status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
-          persistedLocation: 'LOCAL_SECURE_STORAGE',
-          collection: 'reports_day',
-          documentId: reportId,
-          uid: authUid,
-          error: err.message,
-        };
-      }
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_AUTH_REQUIRED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'reports_day',
+        documentId: reportId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting day reports.',
+      };
     }
 
-    return {
-      success: true,
-      status: 'CLOUD_CONNECTED',
-      persistedLocation: 'LOCAL_SECURE_STORAGE',
-      collection: 'reports_day',
-      documentId: reportId,
-      uid: validation.authUid!,
-    };
+    try {
+      const reportRef = doc(firestoreDb, 'reports_day', reportId);
+      await setDoc(reportRef, payload, { merge: true });
+
+      return {
+        success: true,
+        status: 'CLOUD_CONNECTED',
+        persistedLocation: 'FIRESTORE',
+        collection: 'reports_day',
+        documentId: reportId,
+        uid: validation.authUid!,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'reports_day',
+        documentId: reportId,
+        uid: authUid,
+        error: err.message,
+      };
+    }
   }
 
   // -------------------------------------------------------------
@@ -706,7 +741,7 @@ export class ConditionDatabaseService {
       answeredAt: qaData.answeredAt || null,
     };
 
-    if (firebaseAuth?.currentUser?.uid !== validation.authUid) {
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
       return { success: false, status: 'CLOUD_AUTH_REQUIRED', persistedLocation: 'NONE', collection: 'qa_sessions', documentId: docId, uid: validation.authUid!, error: 'An authenticated Firebase user is required for Q/A persistence.' };
     }
     try {
@@ -1031,40 +1066,41 @@ export class ConditionDatabaseService {
     reportStore.saveReport(payload as any);
     this.weekReportCache.set(reportId, payload);
 
-    if (firebaseAuth?.currentUser?.uid === validation.authUid) {
-      try {
-        const reportRef = doc(firestoreDb, 'reports_week', reportId);
-        await setDoc(reportRef, payload, { merge: true });
-
-        return {
-          success: true,
-          status: 'CLOUD_CONNECTED',
-          persistedLocation: 'FIRESTORE',
-          collection: 'reports_week',
-          documentId: reportId,
-          uid: validation.authUid!,
-        };
-      } catch (err: any) {
-        return {
-          success: false,
-          status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
-          persistedLocation: 'LOCAL_SECURE_STORAGE',
-          collection: 'reports_week',
-          documentId: reportId,
-          uid: authUid,
-          error: err.message,
-        };
-      }
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_AUTH_REQUIRED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'reports_week',
+        documentId: reportId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting week reports.',
+      };
     }
 
-    return {
-      success: true,
-      status: 'CLOUD_CONNECTED',
-      persistedLocation: 'LOCAL_SECURE_STORAGE',
-      collection: 'reports_week',
-      documentId: reportId,
-      uid: validation.authUid!,
-    };
+    try {
+      const reportRef = doc(firestoreDb, 'reports_week', reportId);
+      await setDoc(reportRef, payload, { merge: true });
+
+      return {
+        success: true,
+        status: 'CLOUD_CONNECTED',
+        persistedLocation: 'FIRESTORE',
+        collection: 'reports_week',
+        documentId: reportId,
+        uid: validation.authUid!,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        status: err.code === 'permission-denied' ? 'CLOUD_PERMISSION_DENIED' : 'CLOUD_UNAVAILABLE',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'reports_week',
+        documentId: reportId,
+        uid: authUid,
+        error: err.message,
+      };
+    }
   }
 
   async writeMonthReport(uid: string, report: any): Promise<DatabaseWriteResult> {
@@ -1087,6 +1123,18 @@ export class ConditionDatabaseService {
         documentId: reportId,
         uid: authUid,
         error: validation.error,
+      };
+    }
+
+    if (!firestoreDb || firebaseAuth?.currentUser?.uid !== validation.authUid) {
+      return {
+        success: false,
+        status: 'CLOUD_AUTH_REQUIRED',
+        persistedLocation: 'LOCAL_SECURE_STORAGE',
+        collection: 'reports_month',
+        documentId: reportId,
+        uid: validation.authUid!,
+        error: 'Authenticated Firestore client is required before persisting month reports.',
       };
     }
 

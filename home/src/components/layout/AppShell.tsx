@@ -15,6 +15,8 @@ import { androidNotificationService } from '../../services/androidNotificationSe
 import { scheduleService } from '../../services/scheduleService';
 import type { NavigationTab, DeviceInfo } from '../../types';
 
+const initializedScheduleUsers = new Set<string>();
+
 export interface AppShellProps {
   activeTab: NavigationTab;
   onNavigate: (tab: NavigationTab) => void;
@@ -56,15 +58,28 @@ export const AppShell: React.FC<AppShellProps> = ({
     if (!userId) return;
     let mounted = true;
     setNotificationsLoading(true);
-    const unsubscribe = notificationService.subscribeFirestore(userId, (updated) => { if (mounted) { setNotifications(updated); setNotificationsLoading(false); } });
+    const unsubscribe = notificationService.subscribeFirestore(userId, (updated, addedNotificationIds = []) => {
+      if (!mounted) return;
+      setNotifications(updated);
+      setNotificationsLoading(false);
+      // Firestore notifications populate the in-app drawer only. Native
+      // schedule alerts are created exclusively by scheduleService.
+    });
     return () => { mounted = false; unsubscribe(); };
   }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
+    if (initializedScheduleUsers.has(userId)) return;
+    initializedScheduleUsers.add(userId);
     void androidNotificationService.initialize().catch((error) => console.warn('[AndroidNotification] permission/channel unavailable:', error));
-    void scheduleService.syncNativeSchedules(userId).catch((error) => console.warn('[Schedule] native restore unavailable:', error));
-    void scheduleService.reconcileMissedAssessments(userId).catch((error) => console.warn('[Schedule] missed assessment reconciliation unavailable:', error));
+    void Promise.all([
+      scheduleService.syncNativeSchedules(userId),
+      scheduleService.reconcileMissedAssessments(userId),
+    ]).catch((error) => {
+      initializedScheduleUsers.delete(userId);
+      console.error('[Schedule] initialization failed:', error);
+    });
   }, [userId]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;

@@ -327,7 +327,12 @@ async function startServer() {
         uid,
         observationId: req.body?.observationId,
         reportId: req.body?.reportId,
+        persist: false,
       });
+      if (processResponse.status === 'COMPLETED') {
+        processResponse.persisted = await persistTestResultWithAdmin(uid, processResponse);
+        processResponse.notifications = await dispatchTestNotificationsWithAdmin(uid, processResponse);
+      }
 
       res.json(processResponse);
     } catch (err: any) {

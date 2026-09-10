@@ -12,10 +12,24 @@ export function isShbE2ETestEnabled(): boolean {
   // Vite exposes `import.meta.env` in the browser; the optional access also keeps
   // the helper safe when imported by Node-based unit runners.
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return env?.VITE_SHB_E2E_TEST === 'true';
+  return env?.VITE_SHB_E2E_TEST === 'true' || env?.MODE === 'android-qa';
 }
 
-export function createShbE2ETestLockedState(state: ShbEngineState): ShbEngineState {
+export interface ShbE2ELockInputs {
+  shake: number;
+  event: number;
+}
+
+export type ShbE2EDecision = 'LOCK' | 'UNLOCK';
+
+export function getShbE2EDecision(inputs: ShbE2ELockInputs): ShbE2EDecision {
+  return inputs.shake === 2 && inputs.event === 2 ? 'UNLOCK' : 'LOCK';
+}
+
+export function createShbE2ETestLockedState(
+  state: ShbEngineState,
+  inputs: ShbE2ELockInputs = { shake: 0, event: 0 }
+): ShbEngineState {
   const now = Date.now();
   const targetOrgan: OrganCategoryId = state.targetOrgan || 'OVERALL';
 
@@ -157,9 +171,13 @@ export function createShbE2ETestLockedState(state: ShbEngineState): ShbEngineSta
   nextIvItems.sdnn = { ...nextIvItems.sdnn, value: sdnn, liveValue: sdnn, lockedValue: sdnn, status: 'LOCKED' };
   nextIvItems.rr = { ...nextIvItems.rr, value: respiratoryRate, liveValue: respiratoryRate, lockedValue: respiratoryRate, status: 'LOCKED' };
 
+  const decision = getShbE2EDecision(inputs);
+
   return {
     ...state,
-    status: 'LOCKED',
+    // The UNLOCK branch intentionally reuses the existing termination state so
+    // production shake interpretation and UI dialogs remain unchanged.
+    status: decision === 'LOCK' ? 'LOCKED' : 'TERMINATED_BY_SHAKE',
     elapsedSeconds: 3,
     startedAt: state.startedAt ?? now - 3000,
     completedAt: now,
@@ -171,8 +189,8 @@ export function createShbE2ETestLockedState(state: ShbEngineState): ShbEngineSta
       motionStability: 0.95,
       isInterference: false,
       message: 'E2E test lock injected successfully',
-      shakeState: null,
-      shakeEventCount: 0,
+      shakeState: inputs.shake,
+      shakeEventCount: inputs.event,
     },
     interferenceCount: 0,
     isInsideBadInterval: false,

@@ -13,7 +13,11 @@ import {
   lockAllVitals,
   DEFAULT_SHB_CONFIG,
 } from './shbSessionEngine';
-import { createShbE2ETestLockedState, isShbE2ETestEnabled } from './shbE2ETestSource';
+import {
+  createShbE2ETestLockedState,
+  isShbE2ETestEnabled,
+  ShbE2ELockInputs,
+} from './shbE2ETestSource';
 
 export class VitalEngine {
   private state: ShbEngineState;
@@ -142,6 +146,30 @@ export class VitalEngine {
     if (this.onStateChangeCallback) {
       this.onStateChangeCallback(this.getState(this.lastBleConnected));
     }
+  }
+
+  /**
+   * Test-only completion entry point for Android QA. It is deliberately
+   * guarded so production builds cannot inject a synthetic SHB result.
+   */
+  public runControlledE2ECompletion(inputs: ShbE2ELockInputs): LiveVitalsState {
+    if (!isShbE2ETestEnabled()) {
+      throw new Error('Controlled SHB completion requires VITE_SHB_E2E_TEST=true');
+    }
+
+    if (this.e2eLockTimer) {
+      clearTimeout(this.e2eLockTimer);
+      this.e2eLockTimer = null;
+    }
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+
+    this.state = createShbE2ETestLockedState(this.state, inputs);
+    const nextState = this.getState(this.lastBleConnected);
+    this.onStateChangeCallback?.(nextState);
+    return nextState;
   }
 
   public reset(targetOrgan: OrganCategoryId = 'OVERALL') {

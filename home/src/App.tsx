@@ -12,6 +12,7 @@ import { AppShell } from './components/layout/AppShell';
 import { Button } from './components/ui/Button';
 import { WifiOff, RefreshCw, LogOut } from 'lucide-react';
 import { ConditionPage } from '../../c50/src/pages/ConditionPage';
+import { androidNotificationService } from './services/androidNotificationService';
 import { reportService } from './services/reportService';
 import type { ConditionPipelineOutput } from '../../c50/src/services/condition/conditionPipeline';
 
@@ -35,6 +36,7 @@ import { ThemeProvider as ShbThemeProvider } from '../../shb/src/context/ThemeCo
 import { DeviceProvider as ShbDeviceProvider } from '../../shb/src/context/DeviceContext';
 import { ShbTestPage } from '../../shb/src/pages/ShbTestPage';
 import { CribPage } from '../../crib/src/components/CribPage';
+import { AndroidShbQaPage } from './qa/AndroidShbQaPage';
 
 import type { NavigationTab } from './types';
 
@@ -86,6 +88,10 @@ const MainAppContent: React.FC = () => {
   useEffect(() => {
     const handleNativeNotificationClick = (event: Event) => {
       const detail = (event as CustomEvent<{ destination?: string; type?: string }>).detail;
+      const reportId = (event as CustomEvent<{ reportId?: string }>).detail?.reportId;
+      const sourceUserUid = (event as CustomEvent<{ sourceUserUid?: string }>).detail?.sourceUserUid;
+      if (reportId) window.sessionStorage.setItem('goatest:pending-report-id', reportId);
+      if (sourceUserUid) window.sessionStorage.setItem('goatest:pending-report-source-uid', sourceUserUid);
       if (detail?.destination === 'emergency') {
         navigateToRoute('crib');
       } else if (detail?.destination === 'home') {
@@ -115,7 +121,7 @@ const MainAppContent: React.FC = () => {
   const [conditionOutput, setConditionOutput] = useState<ConditionPipelineOutput | null>(null);
   const [conditionPersistenceError, setConditionPersistenceError] = useState<string | null>(null);
   const persistedConditionReportIds = React.useRef(new Set<string>());
-  const handleProceedToCondition = React.useCallback((output: ConditionPipelineOutput) => {
+  const handleProceedToCondition = React.useCallback(async (output: ConditionPipelineOutput) => {
     setConditionOutput(output);
     setConditionPersistenceError(null);
     const reportId = output.report.reportId;
@@ -124,11 +130,11 @@ const MainAppContent: React.FC = () => {
       return;
     }
     persistedConditionReportIds.current.add(reportId);
+    navigateToRoute('condition');
     void reportService.receiveConditionReport(output.report).catch((error: unknown) => {
       persistedConditionReportIds.current.delete(reportId);
       setConditionPersistenceError(error instanceof Error ? error.message : 'HOME report persistence failed.');
     });
-    navigateToRoute('condition');
   }, [navigateToRoute]);
   const navigate = (tab: NavigationTab) => {
     if (tab === 'test' || tab === 'shb') {
@@ -145,6 +151,11 @@ const MainAppContent: React.FC = () => {
     }
     setActiveTab(tab);
   };
+
+  const qaBuildEnabled = import.meta.env.MODE === 'android-qa';
+  if (qaBuildEnabled) {
+    return <AndroidShbQaPage />;
+  }
 
   // 1. Mandatory Opening Page Pipeline (Black Animated GOATEST Splash)
   // The black animated GOATEST splash is the only startup splash screen.
@@ -197,7 +208,27 @@ const MainAppContent: React.FC = () => {
             <ConditionPage
               initialOutput={conditionOutput}
               onBackToCompare={() => navigateToRoute('shb')}
-              onFinish={() => navigateToRoute('home')}
+              onFinish={async () => {
+                try {
+                  // Ensure plugin initialized and permissions granted on Android
+                  await androidNotificationService.initialize();
+                  await androidNotificationService.show({
+                    id: `report:${conditionOutput?.report.reportId ?? String(Date.now())}`,
+                    title: 'Report Completed',
+                    body: 'Your report has been generated successfully.',
+                    type: 'SYSTEM',
+                    userId: currentUser?.uid ?? '',
+                    timestamp: new Date().toISOString(),
+                    reportId: conditionOutput?.report.reportId ?? null,
+                    actionTab: 'reports'
+                  });
+                } catch (e) {
+                  // Ignore notification failures — still navigate home
+                  console.warn('Notification error', e);
+                } finally {
+                  navigateToRoute('home');
+                }
+              }}
               persistenceError={conditionPersistenceError}
             />
           )}

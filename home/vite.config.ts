@@ -5,14 +5,26 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '');
+  const productionEnv = loadEnv('android-production', __dirname, '');
+  // QA is a separate artifact. Never let inherited environment variables expose
+  // the controlled test screen in a production build.
+  const androidQaEnabled = mode === 'android-qa';
   if (mode === 'android-production') {
-    const apiBaseUrl = (env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+    const apiBaseUrl = (env.VITE_API_BASE_URL || productionEnv.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
     if (!/^https:\/\/[^\s/]+(?:\/.*)?$/i.test(apiBaseUrl) || /localhost|127\.0\.0\.1/i.test(apiBaseUrl)) {
       throw new Error('ANDROID_PRODUCTION_BUILD_REQUIRES_REAL_HTTPS_VITE_API_BASE_URL');
     }
   }
   return {
     plugins: [react(), tailwindcss()],
+    define: {
+      'import.meta.env.MODE': JSON.stringify(mode),
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(
+        env.VITE_API_BASE_URL || productionEnv.VITE_API_BASE_URL || '',
+      ),
+      'import.meta.env.VITE_ANDROID_QA': JSON.stringify(androidQaEnabled),
+      'import.meta.env.VITE_SHB_E2E_TEST': JSON.stringify(androidQaEnabled),
+    },
     resolve: {
       dedupe: [
         'react',

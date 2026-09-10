@@ -36,6 +36,8 @@ export interface SystemNotification {
   sourceUserPublicId?: string | null;
   sourceUserName?: string | null;
   reportType?: string | null;
+  eventId?: string | null;
+  scheduleId?: string | null;
 }
 
 export interface AssessmentNotificationInput {
@@ -53,12 +55,13 @@ export interface AssessmentNotificationInput {
   sourceUserName?: string;
   reportType?: string;
   recipientUid?: string;
+  eventId?: string;
+  scheduleId?: string;
 }
 
-import { getAssessmentNotificationId as buildAssessmentNotificationId } from './notificationContract';
+import { getAssessmentNotificationId as buildAssessmentNotificationId, getAssessmentEventId, getCaretakerConnectionNotificationId, getNotificationContent } from './notificationContract';
 import { getFirebaseAuth, getFirebaseDb } from '../config/firebase';
 import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
-import { apiUrl } from '../config/api';
 import { Capacitor } from '@capacitor/core';
 
 export interface NotificationPreferences {
@@ -72,11 +75,11 @@ export interface NotificationPreferences {
 const STORAGE_PREFIX_NOTIFS = 'goatest_notifs_';
 const STORAGE_PREFIX_PREFS = 'goatest_notif_prefs_';
 
-type NotificationListener = (notifications: SystemNotification[]) => void;
+type NotificationListener = (notifications: SystemNotification[], addedNotificationIds?: string[]) => void;
 const userListeners: Map<string, Set<NotificationListener>> = new Map();
 const globalListeners: Set<NotificationListener> = new Set();
 
-export function getAssessmentNotificationId(input: Pick<AssessmentNotificationInput, 'type' | 'reportId' | 'observationId' | 'date' | 'recipientUid'>): string {
+export function getAssessmentNotificationId(input: Pick<AssessmentNotificationInput, 'type' | 'reportId' | 'observationId' | 'date' | 'recipientUid' | 'eventId' | 'scheduleId'>): string {
   return buildAssessmentNotificationId(input);
 }
 
@@ -85,10 +88,13 @@ function sortNotifications(notifications: SystemNotification[]): SystemNotificat
 }
 
 function notificationFromFirestore(id: string, data: Record<string, any>, userId: string): SystemNotification {
+  const content = getNotificationContent({ ...data, type: typeof data.type === 'string' ? data.type : '' });
   return {
     id,
     ...data,
     userId,
+    title: content?.title || data.title || '',
+    body: content?.body || data.body || '',
     timestamp: data.timestamp || data.createdAt || new Date(0).toISOString(),
   } as SystemNotification;
 }
@@ -141,20 +147,9 @@ async function persistNotification(notification: SystemNotification, sourceUserU
     sourceUserPublicId: identity.publicId,
     sourceUserName: identity.name,
     reportType: notification.reportType || null,
-    eventId: notification.metadata?.eventId || null,
+    eventId: notification.eventId || notification.metadata?.eventId || null,
+    scheduleId: notification.scheduleId || notification.metadata?.scheduleId || null,
   }, { merge: true });
-  await sendPushNotification(sourceUserUid, [notification.userId], notification);
-}
-
-async function sendPushNotification(sourceUserUid: string, recipientUids: string[], notification: Pick<SystemNotification, 'id' | 'type' | 'title' | 'body' | 'reportId' | 'observationId' | 'actionTab'>): Promise<void> {
-  const auth = getFirebaseAuth();
-  if (!auth?.currentUser || auth.currentUser.uid !== sourceUserUid) return;
-  const token = await auth.currentUser.getIdToken();
-  await fetch(apiUrl('/api/notifications/push'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ recipientUids, notification }),
-  }).catch((error) => console.warn('[FCM] push fan-out unavailable:', error));
 }
 
 function notifyListeners(userId: string) {
@@ -164,6 +159,27 @@ function notifyListeners(userId: string) {
     uSet.forEach((fn) => fn(list));
   }
   globalListeners.forEach((fn) => fn(list));
+}
+
+async function resetExpiredNotificationsOncePerDay(userId: string): Promise<void> {
+  const markerKey = `goatest_notifications_reset_${userId}`;
+  const today = new Date().toISOString().slice(0, 10);
+  if (localStorage.getItem(markerKey) === today) return;
+  const db = getFirebaseDb();
+  if (!db) return;
+  const snapshot = await getDocs(query(collection(db, 'notifications'), where('uid', '==', userId)));
+  const boundary = `${today}T00:00:00.000Z`;
+  const batch = writeBatch(db);
+  let deletions = 0;
+  snapshot.docs.forEach((item) => {
+    const timestamp = item.data().timestamp || item.data().createdAt;
+    if (typeof timestamp === 'string' && timestamp < boundary) {
+      batch.delete(item.ref);
+      deletions += 1;
+    }
+  });
+  if (deletions > 0) await batch.commit();
+  localStorage.setItem(markerKey, today);
 }
 
 export const notificationService = {
@@ -184,17 +200,18 @@ export const notificationService = {
     listener(this.getUserNotifications(userId));
     const db = getFirebaseDb();
     if (!db) return this.subscribe(userId, listener);
+    void resetExpiredNotificationsOncePerDay(userId).catch((error) => {
+      console.warn('[Notifications] daily reset unavailable:', error);
+    });
     const remoteQuery = query(collection(db, 'notifications'), where('uid', '==', userId));
     let initialized = false;
     const unsubscribeFirestore = onSnapshot(remoteQuery, (snapshot) => {
       const remote = snapshot.docs.map((item) => notificationFromFirestore(item.id, item.data(), userId));
-      if (initialized) {
-        const knownIds = new Set(this.getUserNotifications(userId).map((item) => item.id));
-        // Remote event delivery is owned by FCM. Do not mirror it through
-        // LocalNotifications, which would duplicate the Android alert.
-      }
+      const addedNotificationIds = initialized ? snapshot.docChanges()
+        .filter((change) => change.type === 'added')
+        .map((change) => change.doc.id) : [];
       initialized = true;
-      listener(mergeNotificationLists(userId, remote));
+      listener(mergeNotificationLists(userId, remote), addedNotificationIds);
     }, (error) => {
       console.warn('[Notifications] Firestore listener unavailable:', error);
       listener(this.getUserNotifications(userId));
@@ -204,10 +221,13 @@ export const notificationService = {
   },
   async createAssessmentNotification(userId: string, input: AssessmentNotificationInput): Promise<SystemNotification> {
     const identity = await sourceIdentity(userId);
-    const notificationId = getAssessmentNotificationId(input);
+    const eventId = getAssessmentEventId(input);
+    const notificationId = getAssessmentNotificationId({ ...input, eventId });
+    const content = getNotificationContent({ ...input, sourceUserName: input.sourceUserName || identity.name });
+    if (!content) throw new Error(`NOTIFICATION_CONTENT_MISSING:${input.type}:${notificationId}`);
     const createdAt = new Date().toISOString();
     const existing = this.getUserNotifications(userId).find((item) => item.id === notificationId);
-    const notification: SystemNotification = { id: notificationId, userId, type: input.type, title: input.title, body: input.body, timestamp: existing?.timestamp || createdAt, read: existing?.read || false, actionTab: input.type === 'QA_REQUIRED' || input.type === 'ASSESSMENT_MISSED' ? 'home' : 'reports', reportId: input.reportId || null, observationId: input.observationId || null, date: input.date || null, severity: input.severity || null, metadata: input.metadata, recipientRole: input.recipientRole || 'USER', sourceUserUid: input.sourceUserUid || userId, sourceUserPublicId: input.sourceUserPublicId || identity.publicId, sourceUserName: input.sourceUserName || identity.name, reportType: input.reportType || null };
+    const notification: SystemNotification = { id: notificationId, userId, type: input.type, title: content.title, body: content.body, timestamp: existing?.timestamp || createdAt, read: existing?.read || false, actionTab: input.type === 'QA_REQUIRED' || input.type === 'ASSESSMENT_DUE' || input.type === 'ASSESSMENT_MISSED' ? 'home' : 'reports', reportId: input.reportId || null, observationId: input.observationId || null, date: input.date || null, severity: input.severity || null, metadata: input.metadata, eventId, scheduleId: input.scheduleId || null, recipientRole: input.recipientRole || 'USER', sourceUserUid: input.sourceUserUid || userId, sourceUserPublicId: input.sourceUserPublicId || identity.publicId, sourceUserName: input.sourceUserName || identity.name, reportType: input.reportType || null };
     const list = this.getUserNotifications(userId).filter((item) => item.id !== notificationId);
     this.saveLocalNotifications(userId, [notification, ...list].slice(0, 50));
     await persistNotification(notification, userId);
@@ -223,23 +243,26 @@ export const notificationService = {
     const caretakers = await getDocs(query(collection(db, 'users'), where('role', '==', 'CARETAKER'), where('monitoredUserIds', 'array-contains', sourceUserUid)));
     const batch = writeBatch(db);
     const now = new Date().toISOString();
-    const caretakerTitle = input.type === 'TEST_REPORT_READY' ? 'Test Report Ready'
-      : input.type === 'DAY_REPORT_READY' ? 'Day Report Ready'
-      : input.type === 'WEEK_REPORT_READY' ? 'Week Report Ready'
-      : input.type === 'MONTH_REPORT_READY' ? 'Month Report Ready'
-      : 'Q/A Required';
-    const caretakerBody = input.type === 'QA_REQUIRED'
-      ? `Please complete today's health questions for ${identity.name}.`
-      : `${identity.name}'s ${input.type.replace('_REPORT_READY', '').toLowerCase()} report is ready.`;
+    const caretakerContent = getNotificationContent({ ...input, recipientRole: 'CARETAKER', sourceUserName: identity.name });
+    if (!caretakerContent) throw new Error(`NOTIFICATION_CONTENT_MISSING:${input.type}:CARETAKER`);
+    const newlyCreatedCaretakerUids: string[] = [];
     for (const caretaker of caretakers.docs) {
       const recipientUid = caretaker.id;
-      const notificationId = getAssessmentNotificationId({ ...input, recipientUid });
+      const eventId = getAssessmentEventId(input);
+      // Caretaker report notifications must match the Firestore rule's
+      // recipient-scoped ID contract; keep the USER ID contract unchanged.
+      const notificationId = input.reportId && input.type.endsWith('_REPORT_READY')
+        ? `notification_${input.type}_${input.reportId}_${recipientUid}`
+        : getAssessmentNotificationId({ ...input, eventId, recipientUid });
+      const existing = await getDoc(doc(db, 'notifications', notificationId));
+      if (existing.exists()) continue;
+      newlyCreatedCaretakerUids.push(recipientUid);
       batch.set(doc(db, 'notifications', notificationId), {
         uid: recipientUid,
         userId: recipientUid,
         type: input.type,
-        title: caretakerTitle,
-        body: caretakerBody,
+        title: caretakerContent.title,
+        body: caretakerContent.body,
         timestamp: now,
         actionTab: input.type === 'QA_REQUIRED' ? 'home' : 'reports',
         reportId: input.reportId || null,
@@ -252,13 +275,14 @@ export const notificationService = {
         sourceUserPublicId: identity.publicId,
         sourceUserName: identity.name,
         reportType: input.reportType || null,
+        eventId,
+        scheduleId: input.scheduleId || null,
       }, { merge: true });
     }
-    if (caretakers.docs.length > 0) {
+    if (newlyCreatedCaretakerUids.length > 0) {
       await batch.commit();
-      await sendPushNotification(sourceUserUid, caretakers.docs.map((caretaker) => caretaker.id), { id: input.reportId || input.observationId || input.date || input.type, type: input.type, title: caretakerTitle, body: caretakerBody, reportId: input.reportId, observationId: input.observationId, actionTab: input.type === 'QA_REQUIRED' ? 'home' : 'reports' });
     }
-    return caretakers.docs.length;
+    return newlyCreatedCaretakerUids.length;
   },
   async fanOutCaretakerEvent(sourceUserUid: string, event: { type: 'EMERGENCY'; eventId: string; date?: string }): Promise<number> {
     const auth = getFirebaseAuth();
@@ -289,11 +313,10 @@ export const notificationService = {
     }
     if (caretakers.docs.length > 0) {
       await batch.commit();
-      await sendPushNotification(sourceUserUid, caretakers.docs.map((caretaker) => caretaker.id), { id: event.eventId, type: 'EMERGENCY', title: 'Emergency Alert', body: `An emergency alert was triggered for ${identity.name}.`, actionTab: 'emergency' });
     }
     return caretakers.docs.length;
   },
-  async fanOutMissedAssessmentToCaretakers(sourceUserUid: string, schedule: { id: string; title: string }): Promise<number> {
+  async fanOutMissedAssessmentToCaretakers(sourceUserUid: string, schedule: { id: string; title: string; date?: string }): Promise<number> {
     const authUid = getFirebaseAuth()?.currentUser?.uid;
     if (!authUid || authUid !== sourceUserUid) throw new Error('NOTIFICATION_SOURCE_UID_MISMATCH_REJECTED');
     const db = getFirebaseDb();
@@ -303,16 +326,16 @@ export const notificationService = {
     const batch = writeBatch(db);
     const timestamp = new Date().toISOString();
     for (const caretaker of caretakers.docs) {
-      batch.set(doc(db, 'notifications', `notification_ASSESSMENT_MISSED_${schedule.id}_${caretaker.id}`), {
+      const eventId = getAssessmentEventId({ type: 'ASSESSMENT_MISSED', scheduleId: schedule.id, date: schedule.date });
+      batch.set(doc(db, 'notifications', `notification_${eventId}_${caretaker.id}`), {
         uid: caretaker.id, userId: caretaker.id, type: 'ASSESSMENT_MISSED', title: 'Assessment Missed',
-        body: `${identity.name} missed their scheduled ${schedule.title}.`, timestamp, actionTab: 'home',
-        metadata: { scheduleId: schedule.id }, recipientRole: 'CARETAKER', sourceUserUid,
+        body: `${identity.name} missed a scheduled assessment.`, timestamp, actionTab: 'home',
+        metadata: { scheduleId: schedule.id }, eventId, scheduleId: schedule.id, recipientRole: 'CARETAKER', sourceUserUid,
         sourceUserPublicId: identity.publicId, sourceUserName: identity.name,
       }, { merge: true });
     }
     if (caretakers.docs.length) {
       await batch.commit();
-      await sendPushNotification(sourceUserUid, caretakers.docs.map((caretaker) => caretaker.id), { id: `ASSESSMENT_MISSED_${schedule.id}`, type: 'ASSESSMENT_MISSED', title: 'Assessment Missed', body: `${identity.name} missed their scheduled ${schedule.title}.`, actionTab: 'home', observationId: schedule.id });
     }
     return caretakers.docs.length;
   },

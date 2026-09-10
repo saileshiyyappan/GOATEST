@@ -96,7 +96,7 @@ export const reportService = {
 
     await reportDatabaseService.saveTestRecord(testRecord);
     await reportDatabaseService.saveReportRecord(reportRecord);
-    await scheduleService.cancelMissedForCompletedAssessment(report.uid, generatedAt).catch(() => undefined);
+    await scheduleService.cancelMissedForCompletedAssessment(report.uid, generatedAt);
 
   },
   /**

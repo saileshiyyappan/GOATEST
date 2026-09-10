@@ -28,7 +28,7 @@ export const ConditionPage: React.FC<ConditionPageProps> = ({ initialOutput, onF
   return (
     <ConditionFrame currentState={state} viewMode="report" canGoNext={false} onNext={() => undefined} onBack={onBackToCompare || onFinish || (() => undefined)} onDownload={() => { setIsDownloading(true); try { downloadConditionReportPdf(initialOutput.report); } finally { setIsDownloading(false); } }} isDownloading={isDownloading}>
       <ConditionReportView report={initialOutput.report} result={initialOutput.result} onFinish={onFinish} isDevelopmentPreview={false} />
-      {persistenceError && <div className="text-xs text-amber-300 mt-2">{persistenceError}</div>}
+
     </ConditionFrame>
   );
 };

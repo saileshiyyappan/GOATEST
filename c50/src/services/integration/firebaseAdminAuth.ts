@@ -5,10 +5,24 @@ import { getFirestore } from 'firebase-admin/firestore';
 function initializeAdmin() {
   if (!getApps().length) {
     const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'goatest-2525';
-    const hasExplicitCredentials = Boolean(process.env.FIREBASE_ADMIN_CLIENT_EMAIL && process.env.FIREBASE_ADMIN_PRIVATE_KEY);
-    if (!projectId) throw new Error('Firebase project is not configured. Set FIREBASE_ADMIN_PROJECT_ID or VITE_FIREBASE_PROJECT_ID.');
+    const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+    const hasExplicitCredentials = Boolean(clientEmail && privateKey);
+    const hasApplicationDefaultCredential = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT);
+
+    if (process.env.NODE_ENV === 'production' && (!process.env.FIREBASE_ADMIN_PROJECT_ID || !clientEmail || !privateKey)) {
+      throw Object.assign(new Error('Firebase Admin server credentials are not configured in the deployed environment.'), {
+        statusCode: 500,
+        code: 'ADMIN_CREDENTIAL_ERROR',
+      });
+    }
+
+    if (!projectId && !hasApplicationDefaultCredential) {
+      throw new Error('Firebase project is not configured. Set FIREBASE_ADMIN_PROJECT_ID or VITE_FIREBASE_PROJECT_ID.');
+    }
+
     const credential = hasExplicitCredentials
-      ? cert({ projectId: process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID, clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL, privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, '\n') })
+      ? cert({ projectId: process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID, clientEmail, privateKey: privateKey!.replace(/\\n/g, '\n') })
       : applicationDefault();
     initializeApp({ credential, projectId });
   }

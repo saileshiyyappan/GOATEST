@@ -90,13 +90,13 @@ export async function runConditionPipeline(cmPacket: any): Promise<ConditionPipe
   const matched = matchTestPattern(dataset, pattern);
   const matchedTestRow = matched.row;
   const matchedVector = asStageVector(matchedTestRow);
-  const computed = evaluateStageVector(matchedVector);
+  const computed = evaluateStageVector(pattern);
   const matchedRecord: MatchedDatasetRecord = {
     sno: String(matchedTestRow.SNO), matchedVector, distance: matched.distance, matchType: matched.matchType,
-    primary_taxonomy: matchedTestRow.primary_taxonomy, secondary_taxonomy: matchedTestRow.secondary_taxonomy,
-    pattern_label: matchedTestRow.pattern_label, severity_label: matchedTestRow.severity_label as any,
-    severity_score: matchedTestRow.severity_score, confidence_score: matchedTestRow.confidence_score,
-    confidence_level: matchedTestRow.confidence_level as any, trend_label: matchedTestRow.trend_label as any,
+    primary_taxonomy: computed.primary_taxonomy, secondary_taxonomy: computed.secondary_taxonomy,
+    pattern_label: computed.pattern_label, severity_label: computed.severity_label,
+    severity_score: computed.severity_score, confidence_score: computed.confidence_score,
+    confidence_level: computed.confidence_level, trend_label: 'N/A',
     isLabelInconsistent:
       matchedTestRow.primary_taxonomy !== computed.primary_taxonomy ||
       matchedTestRow.severity_label !== computed.severity_label ||

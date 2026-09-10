@@ -1,0 +1,241 @@
+{
+  "timestamp": "2026-09-09T22:06:49.103Z",
+  "device": "emulator-5554",
+  "apk": "D:\\BAND MLS\\GOATEST\\home\\android\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+  "build": "PASS",
+  "install": "PASS",
+  "launch": "PASS",
+  "runtimeErrors": [],
+  "status": "PASS",
+  "total": 24,
+  "passed": 24,
+  "failed": 0,
+  "blocked": 0,
+  "lockMatrix": [
+    {
+      "shake": 0,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 0,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 0,
+      "event": 2,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 2,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 2,
+      "expected": "UNLOCK",
+      "actual": "UNLOCK",
+      "status": "TERMINATED_BY_SHAKE",
+      "pipeline": false,
+      "passed": true
+    }
+  ],
+  "repeatedRuns": [
+    {
+      "shake": 0,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 2,
+      "expected": "UNLOCK",
+      "actual": "UNLOCK",
+      "status": "TERMINATED_BY_SHAKE",
+      "pipeline": false,
+      "passed": true
+    },
+    {
+      "shake": 0,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 2,
+      "expected": "UNLOCK",
+      "actual": "UNLOCK",
+      "status": "TERMINATED_BY_SHAKE",
+      "pipeline": false,
+      "passed": true
+    },
+    {
+      "shake": 0,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 2,
+      "expected": "UNLOCK",
+      "actual": "UNLOCK",
+      "status": "TERMINATED_BY_SHAKE",
+      "pipeline": false,
+      "passed": true
+    },
+    {
+      "shake": 0,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 2,
+      "expected": "UNLOCK",
+      "actual": "UNLOCK",
+      "status": "TERMINATED_BY_SHAKE",
+      "pipeline": false,
+      "passed": true
+    },
+    {
+      "shake": 0,
+      "event": 0,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 1,
+      "event": 1,
+      "expected": "LOCK",
+      "actual": "LOCK",
+      "status": "LOCKED",
+      "pipeline": true,
+      "passed": true
+    },
+    {
+      "shake": 2,
+      "event": 2,
+      "expected": "UNLOCK",
+      "actual": "UNLOCK",
+      "status": "TERMINATED_BY_SHAKE",
+      "pipeline": false,
+      "passed": true
+    }
+  ],
+  "endToEnd": {
+    "shb": true,
+    "compare": true,
+    "c50": true,
+    "condition": true,
+    "result": true
+  }
+}

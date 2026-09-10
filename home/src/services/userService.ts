@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseDb, handleFirestoreError, OperationType } from '../config/firebase';
 import type { UserProfile, EmergencyContact, LocationSettings, NotificationSettings, MonitoredUser, CaretakerConnection } from '../types';
+import { getCaretakerConnectionNotificationId } from './notificationContract';
 
 const COLLECTION_USERS = 'users';
 const COLLECTION_PUBLIC_USER_IDS = 'public_user_ids';
@@ -497,7 +498,6 @@ export const userService = {
       linkedAt: new Date().toISOString(),
     };
     const monitoredUsers = [...(caretaker.monitoredUsers || []), connection];
-    const eventId = `caretaker_bond_${userUid}_${indexed.uid}`;
     const timestamp = new Date().toISOString();
     const batch = writeBatch(db);
     batch.update(caretakerRef, {
@@ -505,7 +505,7 @@ export const userService = {
       monitoredUsers,
       updatedAt: timestamp,
     });
-    batch.set(doc(db, 'notifications', `${eventId}_${userUid}`), {
+    batch.set(doc(db, 'notifications', getCaretakerConnectionNotificationId(userUid, indexed.uid, userUid)), {
       uid: userUid,
       userId: userUid,
       type: 'SYSTEM',
@@ -519,7 +519,7 @@ export const userService = {
       recipientRole: 'USER',
       actionTab: 'settings',
     });
-    batch.set(doc(db, 'notifications', `${eventId}_${indexed.uid}`), {
+    batch.set(doc(db, 'notifications', getCaretakerConnectionNotificationId(userUid, indexed.uid, indexed.uid)), {
       uid: indexed.uid,
       userId: indexed.uid,
       type: 'SYSTEM',
@@ -637,7 +637,6 @@ export const userService = {
     const db = getFirebaseDb();
     if (!db) throw new Error('FIRESTORE_UNAVAILABLE');
     const timestamp = new Date().toISOString();
-    const eventId = `caretaker_bond_${caretakerUid}_${firebaseUid}`;
     const targetName = foundUser.name || foundUser.displayName || 'Name unavailable';
     const batch = writeBatch(db);
     batch.update(doc(db, COLLECTION_USERS, caretakerUid), {
@@ -645,7 +644,7 @@ export const userService = {
       monitoredUserIds: updatedIds,
       updatedAt: timestamp,
     });
-    batch.set(doc(db, 'notifications', `${eventId}_${firebaseUid}`), {
+    batch.set(doc(db, 'notifications', getCaretakerConnectionNotificationId(firebaseUid, caretakerUid, firebaseUid)), {
       uid: firebaseUid,
       userId: firebaseUid,
       type: 'SYSTEM',

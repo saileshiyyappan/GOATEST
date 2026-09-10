@@ -459,7 +459,7 @@ export function evaluateFeatureComparison(
       upperBound = stageResolution.upperBound;
       matchedBoundary = stageResolution.boundary;
       residualDistance = stageResolution.residualDistance;
-      magnitude = matchedStage === 0 ? rawStageMagnitudes[0] : (rawStageMagnitudes[matchedStage - 1] || rawStageMagnitudes[0]);
+      magnitude = matchedStage === 0 ? rawStageMagnitudes[0] : (rawStageMagnitudes[matchedStage - 1] ?? rawStageMagnitudes[0]);
       severity = matchedStage === 0
         ? 'NORMAL'
         : (matchedStage === 1

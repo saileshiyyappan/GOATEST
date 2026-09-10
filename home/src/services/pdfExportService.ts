@@ -292,6 +292,11 @@ function normalizedC50(report: ReportRecord) {
   const label = (value: unknown, fallback?: unknown) => pdfText(value === undefined || value === null ? fallback : value);
   return {
     pattern: label(raw.patternLabel, metric.c50Label),
+    matchType: label(raw.matchType, metric.matchType || metric.matchStatus),
+    matchedSno: label(raw.matchedSno, metric.matchedSno || metric.referenceDatasetSno),
+    primaryTaxonomy: label(raw.primaryTaxonomy, metric.primaryTaxonomy || metric.classification),
+    secondaryTaxonomy: label(raw.secondaryTaxonomy, metric.secondaryTaxonomy),
+    dataset: label(raw.dataset, metric.dataset),
     severity: label(raw.severityLabel, metric.severity?.label || metric.severity),
     severityScore: label(raw.severityScore, metric.severity?.score),
     confidence: label(raw.confidenceLevel, metric.confidence?.level || metric.confidenceLevel),
@@ -354,6 +359,11 @@ async function buildAndroidPdf(report: ReportRecord, userName: string): Promise<
   document.moveDown().fontSize(13).fillColor('#0369a1').text('C50 ML EVALUATION');
   document.fontSize(10).fillColor('#334155')
     .text(`Pattern: ${evidence.pattern}`)
+    .text(`Match type: ${evidence.matchType}`)
+    .text(`Matched SNO: ${evidence.matchedSno}`)
+    .text(`Dataset: ${evidence.dataset}`)
+    .text(`Primary taxonomy: ${evidence.primaryTaxonomy}`)
+    .text(`Secondary taxonomy: ${evidence.secondaryTaxonomy}`)
     .text(`Severity: ${evidence.severity} (${evidence.severityScore})`)
     .text(`Confidence: ${evidence.confidence} (${evidence.confidenceScore})`)
     .text(`Trend: ${evidence.trend}`);

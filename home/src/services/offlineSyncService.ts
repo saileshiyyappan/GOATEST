@@ -214,6 +214,15 @@ export const offlineSyncService = {
     const callbacks = syncedCallbacks.get(operationId) || new Set<() => void | Promise<void>>();
     callbacks.add(callback);
     syncedCallbacks.set(operationId, callbacks);
+    // Replay can finish before the callback is registered. Re-check durable state.
+    void readAll().then((operations) => {
+      const operation = operations.find((item) => item.operationId === operationId);
+      if (operation?.status !== 'SYNCED') return;
+      const current = syncedCallbacks.get(operationId);
+      if (!current?.delete(callback)) return;
+      if (current.size === 0) syncedCallbacks.delete(operationId);
+      return callback();
+    }).catch(() => undefined);
     return () => {
       callbacks.delete(callback);
       if (callbacks.size === 0) syncedCallbacks.delete(operationId);

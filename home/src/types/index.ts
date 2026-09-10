@@ -137,6 +137,7 @@ export interface AssessmentScheduleItem {
   enabled?: boolean;
   nextScheduledAt?: string;
   missedNotifiedAt?: string | null;
+  completionDate?: string | null;
   status: 'Pending' | 'Completed' | 'In Progress' | 'Cancelled';
   organTarget?: string;
   createdAt: string;

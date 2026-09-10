@@ -70,6 +70,7 @@ export const ScheduleSettingsSection: React.FC<ScheduleSettingsSectionProps> = (
   const [scheduledDate, setScheduledDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [organTarget, setOrganTarget] = useState<string>('Full Assessment');
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadSchedules = async () => {
     if (!userId) return;
@@ -121,7 +122,8 @@ export const ScheduleSettingsSection: React.FC<ScheduleSettingsSectionProps> = (
         description: `Assessment scheduled daily at ${time}.`,
         type: 'success',
       });
-    } catch {
+    } catch (error) {
+      console.error('[ScheduleSettings] Create failed:', error);
       addToast({
         title: 'Error',
         description: 'Could not create assessment schedule.',
@@ -133,6 +135,8 @@ export const ScheduleSettingsSection: React.FC<ScheduleSettingsSectionProps> = (
   };
 
   const handleDelete = async (item: AssessmentScheduleItem) => {
+    if (deletingId) return;
+    setDeletingId(item.id);
     try {
       await scheduleService.deleteScheduleItem(userId, item.id);
       await loadSchedules();
@@ -147,6 +151,8 @@ export const ScheduleSettingsSection: React.FC<ScheduleSettingsSectionProps> = (
         description: 'Failed to delete schedule item.',
         type: 'error',
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -241,11 +247,12 @@ export const ScheduleSettingsSection: React.FC<ScheduleSettingsSectionProps> = (
 
                 <button
                   type="button"
-                  onClick={() => handleDelete(item)}
+                  onClick={() => void handleDelete(item)}
+                  disabled={deletingId === item.id}
                   title="Delete schedule"
                   className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors shrink-0"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className={`w-3.5 h-3.5 ${deletingId === item.id ? 'animate-pulse' : ''}`} />
                 </button>
               </div>
             ))}

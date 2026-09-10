@@ -132,8 +132,9 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
       const pendingQaDayId = typeof window !== 'undefined' ? window.sessionStorage.getItem('goatest:pending-qa-day-id') : null;
       const shouldOpenPendingQa = gate.status === 'Q/A_REQUIRED' && pendingQaDayId === gate.dayObservationId;
       if (shouldOpenPendingQa) window.sessionStorage.removeItem('goatest:pending-qa-day-id');
-      setIsDailyQaPromptOpen(gate.status === 'Q/A_REQUIRED' && !shouldOpenPendingQa);
-      setIsDailyQaRunnerOpen(shouldOpenPendingQa);
+      const canOpenQaToday = gate.qaOpportunityAvailable !== false;
+      setIsDailyQaPromptOpen(gate.status === 'Q/A_REQUIRED' && canOpenQaToday && !shouldOpenPendingQa);
+      setIsDailyQaRunnerOpen(shouldOpenPendingQa && canOpenQaToday);
     }).catch((error) => console.warn('[HomeView] Daily Q/A gate unavailable:', error));
   }, [effectiveUserId, isAuthLoading, authState]);
 

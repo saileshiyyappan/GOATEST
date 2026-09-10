@@ -151,7 +151,8 @@ export function extractRawStageMagnitudes(
     const s4 = profile.stage4 || (profile as any).Stage4 || (profile as any).stage_4;
     const s5 = profile.stage5 || (profile as any).Stage5 || (profile as any).stage_5;
 
-    if (s1 && s2 && s3 && s4 && s5) {
+    const hasAllStageDefinitions = [s1, s2, s3, s4, s5].every((stage) => stage !== undefined && stage !== null);
+    if (hasAllStageDefinitions) {
       const defaultFirstMag = parameterKey === 'spo2' ? 1.0 : 5.0;
       const m1 = isValidFiniteNumber(s1.magnitude) ? s1.magnitude : (isValidFiniteNumber(s1.upperBound) ? s1.upperBound : defaultFirstMag);
       const m2 = isValidFiniteNumber(s2.magnitude) ? s2.magnitude : (parameterKey === 'spo2' ? 1.0 : 8.0);

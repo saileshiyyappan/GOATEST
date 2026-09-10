@@ -16,7 +16,6 @@ import { reportStore } from '../c50/src/services/condition/reportStore';
 import { generateReportPdfBuffer } from '../c50/src/services/condition/reportGenerator';
 import { getAuthoritativeReportWithAdmin } from '../c50/src/services/integration/adminTestPersistence';
 import { getAdminFirestore } from '../c50/src/services/integration/firebaseAdminAuth';
-import { getMessaging } from 'firebase-admin/messaging';
 import { GOATEST_AI_SYSTEM_INSTRUCTION } from './src/services/aiPrompt';
 
 const app = express();
@@ -39,57 +38,16 @@ app.use((req, res, next) => {
 
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
 
-app.post('/api/devices', async (req, res) => {
-  try {
-    const uid = await verifyIntegrationBearerToken(req.headers.authorization);
-    const token = String(req.body?.token || '').trim();
-    if (!token || token.length < 20) return res.status(400).json({ ok: false, code: 'INVALID_DEVICE_TOKEN' });
-    const platform = String(req.body?.platform || '').toLowerCase();
-    if (platform !== 'android') return res.status(400).json({ ok: false, code: 'INVALID_DEVICE_PLATFORM' });
-    const deviceId = String(req.body?.deviceId || token.slice(-24)).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
-    await getAdminFirestore().collection('users').doc(uid).collection('devices').doc(deviceId).set({ token, platform, deviceId, enabled: true, updatedAt: new Date().toISOString() }, { merge: true });
-    console.info('[FCM] device registration', { backendStatus: 200, platform });
-    return res.json({ ok: true });
-  } catch (error: any) {
-    const status = error.statusCode || 500;
-    console.warn('[FCM] device registration failed', { backendStatus: status });
-    return res.status(status).json({ ok: false, code: 'DEVICE_REGISTRATION_FAILED' });
-  }
-});
-
-app.post('/api/notifications/push', async (req, res) => {
-  try {
-    const sourceUid = await verifyIntegrationBearerToken(req.headers.authorization);
-    const requested = Array.isArray(req.body?.recipientUids) ? req.body.recipientUids.filter((value: unknown): value is string => typeof value === 'string') : [];
-    const notification = req.body?.notification || {};
-    if (!requested.length || !notification.title || !notification.body || !notification.type) return res.status(400).json({ ok: false, code: 'INVALID_PUSH_REQUEST' });
-    const db = getAdminFirestore();
-    const authorized = new Set<string>([sourceUid]);
-    const caretakers = await db.collection('users').where('role', '==', 'CARETAKER').where('monitoredUserIds', 'array-contains', sourceUid).get();
-    caretakers.docs.forEach((item) => authorized.add(item.id));
-    const recipientUids = requested.filter((uid: string) => authorized.has(uid));
-    const deviceEntries: Array<{ uid: string; deviceId: string; token: string }> = [];
-    for (const uid of recipientUids) {
-      const devices = await db.collection('users').doc(uid).collection('devices').where('enabled', '==', true).get();
-      devices.docs.forEach((device) => { const token = device.data().token; if (typeof token === 'string' && token) deviceEntries.push({ uid, deviceId: device.id, token }); });
-    }
-    const tokens = [...new Set(deviceEntries.map((entry) => entry.token))];
-    console.info('[FCM] push dispatch', { recipientCount: recipientUids.length, deviceCount: tokens.length });
-    if (!tokens.length) return res.json({ ok: true, sent: 0 });
-    const result = await getMessaging().sendEachForMulticast({ tokens, notification: { title: String(notification.title), body: String(notification.body) }, data: { type: String(notification.type), notificationId: String(notification.id || ''), sourceUserUid: sourceUid, reportId: String(notification.reportId || ''), observationId: String(notification.observationId || ''), actionTab: String(notification.actionTab || 'home') }, android: { notification: { channelId: 'goatest-alerts-v2', icon: 'ic_stat_goatest', color: '#000000' } } });
-    const invalidCodes = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
-    const staleDevices = result.responses.flatMap((response, index) => response.success || !response.error || !invalidCodes.has(response.error.code)
-      ? []
-      : deviceEntries.filter((entry) => entry.token === tokens[index]).map((entry) => entry));
-    await Promise.all(staleDevices.map((entry) => db.collection('users').doc(entry.uid).collection('devices').doc(entry.deviceId).delete()));
-    if (staleDevices.length) console.info('[FCM] stale devices removed', { count: staleDevices.length });
-    return res.json({ ok: true, sent: result.successCount, failed: result.failureCount });
-  } catch (error: any) {
-    const status = error.statusCode || 500;
-    console.warn('[FCM] push dispatch failed', { backendStatus: status });
-    return res.status(status).json({ ok: false, code: 'PUSH_SEND_FAILED' });
-  }
-});
+function sanitizeDeviceErrorLog(message: string | undefined, fallback: string) {
+  const raw = String(message || fallback)
+    .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/(Authorization\s*:\s*Bearer\s+)[^\s,;]+/gi, '$1[REDACTED]')
+    .replace(/(token=|token\s*[:=]|FCM token|registration-token|id token|firebase id token)[^\n\r,;]{0,200}/gi, '[REDACTED]')
+    .replace(/(privateKey|private_key|clientEmail|client_secret|FIREBASE_ADMIN_PRIVATE_KEY)[^\n\r,;]{0,200}/gi, '[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return raw.slice(0, 220) || fallback;
+}
 
 const PUBLIC_USER_ID_PATTERN = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/;
 const RELATIONSHIP_NAME_PATTERN = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'-]{0,79}$/u;
@@ -188,50 +146,6 @@ app.get('/api/caretaker/links', async (req, res) => {
     return res.json({ caretakers });
   } catch (error: any) {
     return res.status(error.statusCode || 500).json({ error: error.message || 'Caretaker links unavailable' });
-  }
-});
-
-app.post('/api/notifications/caretaker-fanout', async (req, res) => {
-  try {
-    const authenticatedUid = await verifyIntegrationBearerToken(req.headers.authorization);
-    const { sourceUserUid, type, reportType, reportId, observationId, date, eventId, severity } = req.body || {};
-    if (!sourceUserUid || authenticatedUid !== sourceUserUid) return res.status(403).json({ error: 'Source user authorization failed' });
-    if (!['TEST_REPORT_READY', 'DAY_REPORT_READY', 'WEEK_REPORT_READY', 'MONTH_REPORT_READY', 'QA_REQUIRED', 'EMERGENCY'].includes(type)) return res.status(400).json({ error: 'Unsupported caretaker notification type' });
-    if (type !== 'EMERGENCY' && ((type !== 'QA_REQUIRED' && !reportId) || (type === 'QA_REQUIRED' && !observationId && !date))) return res.status(400).json({ error: 'Notification event identity is required' });
-
-    const db = getAdminFirestore();
-    const sourceSnapshot = await db.collection('users').doc(sourceUserUid).get();
-    const source = sourceSnapshot.exists ? sourceSnapshot.data() || {} : {};
-    const sourceUserPublicId = source.uniqueId || source.displayId || null;
-    const sourceUserName = source.name || source.displayName || null;
-    if (type !== 'QA_REQUIRED' && type !== 'EMERGENCY') {
-      const reportCollection = `reports_${String(reportType || type.replace('_REPORT_READY', '')).toLowerCase()}`;
-      if (!['reports_test', 'reports_day', 'reports_week', 'reports_month'].includes(reportCollection)) return res.status(400).json({ error: 'Unsupported report type' });
-      const reportSnapshot = await db.collection(reportCollection).doc(reportId).get();
-      if (!reportSnapshot.exists || reportSnapshot.data()?.uid !== sourceUserUid) return res.status(403).json({ error: 'Report is not owned by the authenticated source user' });
-    }
-    const caretakers = await db.collection('users').where('monitoredUserIds', 'array-contains', sourceUserUid).get();
-    const logicalEventId = eventId || reportId || observationId || date || `emergency_${new Date().toISOString().slice(0, 10)}`;
-    const caretakerTitle = type === 'QA_REQUIRED'
-      ? `${sourceUserName || 'User'}'s daily check-in pending`
-      : type === 'EMERGENCY' ? 'Emergency alert' : `${sourceUserName || 'User'}'s ${String(reportType || type.replace('_REPORT_READY', '')).toUpperCase()} report ready`;
-    const caretakerBody = type === 'QA_REQUIRED'
-      ? `A daily check-in is pending for ${sourceUserName || 'the monitored user'}.`
-      : type === 'EMERGENCY' ? 'An emergency alert was raised by a monitored user.' : `A ${String(reportType || type.replace('_REPORT_READY', '')).toUpperCase()} condition report is ready for ${sourceUserName || 'the monitored user'}.`;
-    const recipientUids = new Set(caretakers.docs.map((item) => item.id).filter((uid) => uid !== sourceUserUid));
-    const timestamp = new Date().toISOString();
-    await Promise.all(Array.from(recipientUids).map((recipientUid) => {
-       const notificationId = `notification_${type}_${logicalEventId}_${recipientUid}`;
-      return db.collection('notifications').doc(notificationId).set({
-        uid: recipientUid, userId: recipientUid, type, title: caretakerTitle, body: caretakerBody,
-        timestamp, read: false, actionTab: 'reports', reportId: reportId || null, observationId: observationId || null,
-         date: date || null, severity: severity || null, recipientRole: 'CARETAKER', sourceUserUid,
-         sourceUserPublicId, sourceUserName, reportType: reportType || (type === 'DAY_REPORT_READY' ? 'DAY' : type === 'TEST_REPORT_READY' ? 'TEST' : null),
-      }, { merge: true });
-    }));
-    return res.json({ success: true, recipientCount: recipientUids.size, persisted: true, delivery: 'FIRESTORE_IN_APP', eventId: logicalEventId, title: caretakerTitle, body: caretakerBody });
-  } catch (error: any) {
-    return res.status(error.statusCode || 500).json({ error: error.message || 'Caretaker notification fan-out failed' });
   }
 });
 

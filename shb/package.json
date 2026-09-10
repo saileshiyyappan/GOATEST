@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
+    "qa:lock:test": "tsx src/services/vitals/__tests__/controlledLockMatrix.test.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

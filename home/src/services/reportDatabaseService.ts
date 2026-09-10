@@ -490,7 +490,7 @@ export const reportDatabaseService = {
     // Caretaker notification rules intentionally require the authoritative
     // report document to exist first. If the report is staged offline, defer
     // this exact deterministic fan-out until replay confirms the write.
-    const fanOut = async () => {
+    const createUserNotification = async () => {
       if (report.isFixture) return;
       const reportType = report.reportType;
       const title = reportType === 'TEST' ? 'Test Report Ready'
@@ -511,21 +511,30 @@ export const reportDatabaseService = {
         reportType,
       };
       await notificationService.createAssessmentNotification(report.userId, notificationInput);
+      return notificationInput;
+    };
+    const fanOutCaretakerNotification = async (notificationInput: Awaited<ReturnType<typeof createUserNotification>>) => {
+      if (!notificationInput) return;
       try {
         await notificationService.fanOutAssessmentNotificationToCaretakers(report.userId, {
           ...notificationInput,
-          title: `${reportType === 'TEST' ? 'Test' : reportType[0] + reportType.slice(1).toLowerCase()} Report Ready`,
-          body: `${reportType === 'TEST' ? 'The test' : `The ${reportType.toLowerCase()}`} report for the monitored user is ready.`,
+          title: `${report.reportType === 'TEST' ? 'Test' : report.reportType[0] + report.reportType.slice(1).toLowerCase()} Report Ready`,
+          body: `${report.reportType === 'TEST' ? 'The test' : `The ${report.reportType.toLowerCase()}`} report for the monitored user is ready.`,
           recipientRole: 'CARETAKER',
-          reportType,
+          reportType: report.reportType,
         });
       } catch (error) {
-        console.warn(`[${reportType} caretaker notification] fan-out unavailable:`, error);
+        console.warn(`[${report.reportType} caretaker notification] fan-out unavailable:`, error);
       }
     };
     const operationId = `report:${collectionName}:${report.reportId}`;
-    if (syncStatus === 'SYNCED') await fanOut();
-    else offlineSyncService.onSynced(operationId, fanOut);
+    const notificationInput = await createUserNotification();
+    if (!notificationInput) return;
+    if (syncStatus === 'SYNCED') {
+      await fanOutCaretakerNotification(notificationInput);
+    } else {
+      offlineSyncService.onSynced(operationId, () => fanOutCaretakerNotification(notificationInput));
+    }
   },
 
   /**

@@ -8,7 +8,19 @@ export type DailyQaGateStatus = 'DAY_NOT_READY' | 'Q/A_REQUIRED' | 'Q/A_COMPLETE
 export interface DailyQaGateState {
   status: DailyQaGateStatus; uid: string; date: string; dayObservationId?: string; testObservationIds?: string[];
   qaSessionId?: string; qaCompletionStatus?: QaSessionRecord['completionStatus']; qaCompletedAt?: string;
-  qaSession?: QaSessionRecord; dayInput?: DayAggregationInput; error?: string;
+  qaSession?: QaSessionRecord; dayInput?: DayAggregationInput; error?: string; qaOpportunityAvailable?: boolean;
+}
+
+function qaOpportunityKey(userId: string, date: string): string {
+  return `goatest_qa_opportunity_${userId}_${date}`;
+}
+
+function hasOpenedQaOpportunity(userId: string, date: string): boolean {
+  return typeof localStorage !== 'undefined' && localStorage.getItem(qaOpportunityKey(userId, date)) === 'opened';
+}
+
+function markQaOpportunityOpened(userId: string, date: string): void {
+  if (typeof localStorage !== 'undefined') localStorage.setItem(qaOpportunityKey(userId, date), 'opened');
 }
 
 export async function getDailyQaGate(userId: string, date?: string): Promise<DailyQaGateState> {
@@ -26,14 +38,25 @@ export async function getDailyQaGate(userId: string, date?: string): Promise<Dai
   try {
     session = await dynamicQaService.getOrCreateDailyQaSession({ userId: authenticatedUid, dayId: day.input.dayObservationId, dayDate: targetDate });
   } catch (error) {
-    notifyQaRequired({ type: 'QA_REQUIRED', observationId: day.input.dayObservationId, date: targetDate, title: 'Q/A Required', body: "Please complete today's health questions.", metadata: { dayId: day.input.dayObservationId } });
-    return { status: 'Q/A_REQUIRED', uid: authenticatedUid, date: targetDate, dayObservationId: day.input.dayObservationId, testObservationIds: day.input.testObservationIds, dayInput: day.input, error: error instanceof Error ? error.message : 'AI Q/A is temporarily unavailable. Please retry.' };
+    const qaAlreadyOpened = hasOpenedQaOpportunity(authenticatedUid, targetDate);
+    if (!qaAlreadyOpened) {
+      markQaOpportunityOpened(authenticatedUid, targetDate);
+      notifyQaRequired({ type: 'QA_REQUIRED', observationId: day.input.dayObservationId, date: targetDate, title: 'Q/A Required', body: "Please complete today's health questions.", metadata: { dayId: day.input.dayObservationId } });
+    }
+    return { status: 'Q/A_REQUIRED', uid: authenticatedUid, date: targetDate, dayObservationId: day.input.dayObservationId, testObservationIds: day.input.testObservationIds, dayInput: day.input, qaOpportunityAvailable: !qaAlreadyOpened, error: error instanceof Error ? error.message : 'AI Q/A is temporarily unavailable. Please retry.' };
   }
   const completed = session.completionStatus === 'COMPLETED';
   if (!completed) {
-    notifyQaRequired({ type: 'QA_REQUIRED', observationId: day.input.dayObservationId, date: targetDate, title: 'Q/A Required', body: "Please complete today's health questions.", metadata: { dayId: day.input.dayObservationId, qaSessionId: session.qaSessionId } });
+    const qaAlreadyOpened = hasOpenedQaOpportunity(authenticatedUid, targetDate);
+    if (!qaAlreadyOpened) {
+      markQaOpportunityOpened(authenticatedUid, targetDate);
+      notifyQaRequired({ type: 'QA_REQUIRED', observationId: day.input.dayObservationId, date: targetDate, title: 'Q/A Required', body: "Please complete today's health questions.", metadata: { dayId: day.input.dayObservationId, qaSessionId: session.qaSessionId } });
+    }
+    const state: DailyQaGateState = { status: 'Q/A_REQUIRED', uid: authenticatedUid, date: targetDate, dayObservationId: day.input.dayObservationId, testObservationIds: day.input.testObservationIds, qaSessionId: session.qaSessionId, qaCompletionStatus: session.completionStatus, qaCompletedAt: session.completedAt, qaSession: session, dayInput: day.input, qaOpportunityAvailable: !qaAlreadyOpened };
+    console.info('[DAY Q/A GATE]', state);
+    return state;
   }
-  const state: DailyQaGateState = { status: completed ? 'Q/A_COMPLETED' : 'Q/A_REQUIRED', uid: authenticatedUid, date: targetDate, dayObservationId: day.input.dayObservationId, testObservationIds: day.input.testObservationIds, qaSessionId: session.qaSessionId, qaCompletionStatus: session.completionStatus, qaCompletedAt: session.completedAt, qaSession: session, dayInput: day.input };
+  const state: DailyQaGateState = { status: 'Q/A_COMPLETED', uid: authenticatedUid, date: targetDate, dayObservationId: day.input.dayObservationId, testObservationIds: day.input.testObservationIds, qaSessionId: session.qaSessionId, qaCompletionStatus: session.completionStatus, qaCompletedAt: session.completedAt, qaSession: session, dayInput: day.input, qaOpportunityAvailable: false };
   console.info(completed ? '[DAY Q/A COMPLETE]' : '[DAY Q/A GATE]', state);
   return state;
 }

@@ -13,9 +13,12 @@
  * - Dark/light responsive theme contract
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Dialog } from '../ui/Dialog';
+import { ReportCharts } from './ReportCharts';
 import logoUrl from '../../assets/goatest-logo.png';
-import type { ReportRecord } from '../../types';
+import type { ReportRecord, TestRecord } from '../../types';
+import { reportDatabaseService } from '../../services/reportDatabaseService';
 import { pdfExportService } from '../../services/pdfExportService';
 import { buildShortReportSummary } from '../../services/shortReportSummaryService';
 import {
@@ -39,6 +42,121 @@ export interface ReportViewerModalProps {
   onClose: () => void;
 }
 
+const graphTraceReferences = (value: unknown, path = 'report', output: Array<{ path: string; value: unknown }> = []) => {
+  if (!value || typeof value !== 'object' || output.length >= 200) return output;
+  Object.entries(value as Record<string, unknown>).forEach(([key, child]) => {
+    const childPath = `${path}.${key}`;
+    if (/(id|ids|reference|source|observation|session|report)/i.test(key) && (typeof child === 'string' || Array.isArray(child))) output.push({ path: childPath, value: child });
+    if (child && typeof child === 'object') graphTraceReferences(child, childPath, output);
+  });
+  return output;
+};
+
+const traceGraphTest = (source: string, test: TestRecord | null) => {
+  const raw = test?.rawData as Record<string, any> | undefined;
+  const packet = raw?.cmPacket;
+  const parameters = packet?.parameters;
+  const rows = Array.isArray(parameters) ? parameters : parameters && typeof parameters === 'object' ? Object.values(parameters) : [];
+  console.info('[GRAPH TRACE TEST]', {
+    source,
+    testId: test?.testId || null,
+    sessionId: test?.sessionId || null,
+    reportReference: test?.reportReference || null,
+    timestamp: test?.timestamp || null,
+    rawData: !!raw,
+    cmPacket: !!packet,
+    parameterCount: rows.length,
+    parameters: rows.map((row: any) => ({ name: row?.name, parameterId: row?.parameterId, id: row?.id, shbValue: row?.shbValue })),
+  });
+};
+const localDate = (value: string | undefined): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value.slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const reportToTestRecord = (sourceReport: ReportRecord): TestRecord | null => {
+  const payload = sourceReport as ReportRecord & Record<string, any>;
+  const metrics = sourceReport.readableContent?.metricsSummary as Record<string, any> | undefined;
+  const sourceCmPacket = metrics?.sourceCmPacket || payload.sourceCmPacket;
+  if (!sourceCmPacket || typeof sourceCmPacket !== 'object') return null;
+  const testId = sourceReport.referenceId || sourceReport.sessionId || sourceReport.reportId;
+  return { testId, userId: sourceReport.userId, sessionId: sourceReport.sessionId || testId, timestamp: sourceReport.generatedAt, target: sourceReport.target || 'General', status: 'COMPLETED', source: 'SHB', rawData: { cmPacket: sourceCmPacket }, reportReference: sourceReport.reportId, createdAt: sourceReport.createdAt, updatedAt: sourceReport.updatedAt };
+};
+const resolveGraphSourceTests = async (report: ReportRecord): Promise<TestRecord[]> => {
+  const provenance = report.provenance as Record<string, any> | undefined;
+  console.info('[GRAPH TRACE REPORT]', { reportType: report.reportType, reportId: report.reportId, referenceId: report.referenceId, date: report.date, assessmentDate: report.assessmentDate, periodStart: report.periodStart, periodEnd: report.periodEnd, topLevelKeys: Object.keys(report), references: graphTraceReferences(report) });
+  const sourceIds = new Set<string>([
+    ...(report.testObservationIds || []),
+    ...(Array.isArray(provenance?.sourceTestIds) ? provenance.sourceTestIds : []),
+  ].filter((id): id is string => typeof id === 'string' && id.length > 0));
+  const addDayTests = async (dayId: string) => {
+    const day = await reportDatabaseService.getDayRecord(dayId);
+    (day?.testReferences || []).forEach((id) => sourceIds.add(id));
+  };
+  if (report.reportType === 'DAY' && sourceIds.size === 0) await addDayTests(report.referenceId);
+  if (report.reportType === 'WEEK' && sourceIds.size === 0) {
+    const week = await reportDatabaseService.getWeekRecord(report.referenceId);
+    for (const dayId of week?.dayReferences || []) await addDayTests(dayId);
+  }
+  console.info('[GRAPH TRACE SOURCE IDS]', { reportId: report.reportId, sourceIds: Array.from(sourceIds), sourceIdCount: sourceIds.size });
+  if (report.reportType === 'MONTH' && sourceIds.size === 0) {
+    const month = await reportDatabaseService.getMonthRecord(report.referenceId);
+    for (const weekId of month?.weekReferences || []) {
+      const week = await reportDatabaseService.getWeekRecord(weekId);
+      for (const dayId of week?.dayReferences || []) await addDayTests(dayId);
+    }
+  }
+  const resolveOne = async (sourceId: string): Promise<TestRecord | null> => {
+    const bareId = sourceId.replace(/^rep_test_/, '');
+    const direct = await reportDatabaseService.getTestRecord(sourceId) || (bareId !== sourceId ? await reportDatabaseService.getTestRecord(bareId) : null);
+    if (direct) { traceGraphTest('direct:' + sourceId, direct); return direct; }
+    const sourceReport = await reportDatabaseService.getReportRecord(sourceId) || await reportDatabaseService.getReportRecord(`rep_test_${bareId}`);
+    if (!sourceReport) { console.info('[GRAPH TRACE MISSING SOURCE]', { sourceId, triedTestIds: [sourceId, bareId], triedReportIds: [sourceId, 'rep_test_' + bareId] }); return null; }
+    const payload = sourceReport as ReportRecord & Record<string, any>;
+    const metrics = sourceReport.readableContent?.metricsSummary as Record<string, any> | undefined;
+    const sourceCmPacket = metrics?.sourceCmPacket || payload.sourceCmPacket;
+    if (!sourceCmPacket || typeof sourceCmPacket !== 'object') { console.info('[GRAPH TRACE NO CM PACKET]', { sourceId, sourceReportId: sourceReport.reportId, sourceReportKeys: Object.keys(sourceReport), metricsKeys: Object.keys(metrics || {}) }); return null; }
+    const syntheticTest: TestRecord = {
+      testId: bareId,
+      userId: sourceReport.userId,
+      sessionId: sourceReport.sessionId || bareId,
+      timestamp: sourceReport.generatedAt,
+      target: sourceReport.target || 'General',
+      status: 'COMPLETED',
+      source: 'SHB',
+      rawData: { cmPacket: sourceCmPacket },
+      reportReference: sourceReport.reportId,
+      createdAt: sourceReport.createdAt,
+      updatedAt: sourceReport.updatedAt,
+    };
+    traceGraphTest('report:' + sourceReport.reportId, syntheticTest);
+    return syntheticTest;
+  };
+  const records = await Promise.all(Array.from(sourceIds).map(resolveOne));
+  records.forEach((test, index) => traceGraphTest('resolved:' + index, test));
+  const resolved = records.filter((test): test is TestRecord => !!test && test.userId === report.userId && test.status === 'COMPLETED');
+  if (resolved.some((test) => !!(test.rawData as Record<string, any>)?.cmPacket?.parameters)) return resolved;
+
+  const reportDate = localDate(report.assessmentDate || report.date || report.generatedAt);
+  const periodStart = localDate(report.periodStart || (provenance?.weekStart as string | undefined));
+  const periodEnd = localDate(report.periodEnd || (provenance?.weekEnd as string | undefined));
+  const inPeriod = (timestamp: string) => {
+    const date = localDate(timestamp);
+    if (report.reportType === 'DAY') return !reportDate || date === reportDate;
+    if (periodStart && periodEnd) return date >= periodStart && date <= periodEnd;
+    return true;
+  };
+  const allLocalTests = await reportDatabaseService.getUserTests(report.userId);
+  const localTests = allLocalTests.filter((test) => inPeriod(test.timestamp));
+  const persistedTestReports = await reportDatabaseService.getUserConditionReports(report.userId, 'TEST');
+  console.info('[GRAPH TRACE PERIOD FALLBACK]', { reportId: report.reportId, reportDate, periodStart, periodEnd, localTestCount: allLocalTests.length, persistedTestReportCount: persistedTestReports.length });
+  const reportTests = persistedTestReports.filter((testReport) => inPeriod(testReport.generatedAt)).map(reportToTestRecord).filter((test): test is TestRecord => !!test);
+  const byId = new Map<string, TestRecord>();
+  [...localTests, ...reportTests].forEach((test) => byId.set(test.testId, test));
+  const finalTests = Array.from(byId.values()).filter((test) => !!(test.rawData as Record<string, any>)?.cmPacket?.parameters);
+};
 export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
   report,
   isOpen,
@@ -47,6 +165,16 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
   const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfSavedMessage, setPdfSavedMessage] = useState<string | null>(null);
+  const [showGraph, setShowGraph] = useState(false);
+  const [graphSourceTests, setGraphSourceTests] = useState<TestRecord[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    setGraphSourceTests([]);
+    if (!isOpen || !report || report.reportType === 'TEST') return () => { active = false; };
+    void resolveGraphSourceTests(report).then((tests) => { if (active) setGraphSourceTests(tests); });
+    return () => { active = false; };
+  }, [isOpen, report]);
 
   const handleExportPdf = async () => {
     setPdfError(null);
@@ -269,6 +397,15 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
         <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 flex items-center justify-between gap-2">
           <button
             type="button"
+            onClick={() => setShowGraph(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 text-indigo-500" />
+            <span>View Graph</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleExportPdf}
             disabled={isPdfExporting}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
@@ -300,6 +437,24 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
             PDF download failed: {pdfError}
           </div>
         )}
+
+        {/* Graph Dialog */}
+        <Dialog
+          isOpen={showGraph}
+          onClose={() => setShowGraph(false)}
+          title="Report Graph"
+          description={`Visualization for ${report.reportType} report · ${
+            report.periodStart && report.periodEnd
+              ? `${report.periodStart} to ${report.periodEnd}`
+              : new Date(report.generatedAt).toLocaleString()
+          }`}
+          maxWidth="lg"
+        >
+          <div className="w-full">
+            <ReportCharts visualizationData={report.visualizationData} reportType={report.reportType} report={report} sourceTests={graphSourceTests} />
+          </div>
+        </Dialog>
+
       </div>
     </div>
   );

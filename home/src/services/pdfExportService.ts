@@ -3,7 +3,7 @@
  * PMT-6 Part 11: High-fidelity clinical report export & printing.
  */
 
-import type { ReportRecord } from '../types';
+import type { ReportRecord, VisualizationComparisonItem, VisualizationTrendItem } from '../types';
 import logoUrl from '../assets/goatest-logo.png';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -19,6 +19,66 @@ const escapeHtml = (value: unknown): string => String(value ?? 'Unavailable')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const display = (value: unknown): string => value === null || value === undefined || value === '' ? 'Unavailable' : escapeHtml(value);
+
+const comparisonSvg = (data: VisualizationComparisonItem[]): string => {
+  if (data.length === 0) return '';
+  const width = 560;
+  const rowHeight = 28;
+  const height = Math.max(120, data.length * rowHeight + 20);
+  const numericValues = data
+    .map((item) => item.currentValue)
+    .filter((value): value is number => typeof value === 'number');
+  const maxValue = numericValues.length > 0 ? Math.max(...numericValues, 1) : 1;
+  const rows = data.map((item, index) => {
+    const y = 20 + index * rowHeight;
+    const value = typeof item.currentValue === 'number' ? item.currentValue : null;
+    const percent = value === null ? 0 : Math.min(100, Math.max(2, (value / maxValue) * 100));
+    const barWidth = Math.round((percent / 100) * (width - 220));
+    const label = escapeHtml(item.parameter);
+    const formattedValue = value === null
+      ? '--'
+      : escapeHtml(`${value}${item.unit ? ` ${item.unit}` : ''}`);
+    return `<g>
+      <text x="8" y="${y + 12}" font-size="11" fill="#0f172a">${label}</text>
+      <rect x="220" y="${y}" width="${barWidth}" height="12" rx="6" fill="#10b981"></rect>
+      <text x="${220 + Math.max(barWidth, 4) + 8}" y="${y + 11}" font-size="11" fill="#0f172a">${formattedValue}</text>
+    </g>`;
+  }).join('');
+  return `<div style="page-break-inside: avoid; margin-top: 12px;">
+    <h3 style="font-size:12px; font-weight:800; color:#0f172a; margin:0 0 8px 0;">Parameter Comparison</h3>
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parameter comparison chart">
+      <rect width="100%" height="100%" fill="transparent" />${rows}
+    </svg>
+  </div>`;
+};
+
+const trendSvg = (data: VisualizationTrendItem[]): string => {
+  if (data.length === 0) return '';
+  const width = 560;
+  const height = 190;
+  const points = data
+    .map((item, index) => {
+      const value = typeof item.value === 'number' ? item.value : typeof item.score === 'number' ? item.score : null;
+      return value === null ? null : { item, value, index };
+    })
+    .filter((point): point is { item: VisualizationTrendItem; value: number; index: number } => point !== null);
+  if (points.length === 0) return '';
+  const min = Math.min(...points.map((point) => point.value));
+  const max = Math.max(...points.map((point) => point.value), min + 1);
+  const x = (index: number) => 28 + (index * (width - 56)) / Math.max(data.length - 1, 1);
+  const y = (value: number) => 24 + ((max - value) * (height - 56)) / (max - min);
+  const path = points.map((point, pointIndex) => `${pointIndex === 0 ? 'M' : 'L'} ${x(point.index)} ${y(point.value)}`).join(' ');
+  const dots = points.map((point) => `<circle cx="${x(point.index)}" cy="${y(point.value)}" r="3.5" fill="#4f46e5" />`).join('');
+  const labels = points.map((point) => `<text x="${x(point.index)}" y="${height - 10}" text-anchor="middle" font-size="9" fill="#475569">${escapeHtml(point.item.label)}</text>`).join('');
+  return `<div style="page-break-inside: avoid; margin-top: 12px;">
+    <h3 style="font-size:12px; font-weight:800; color:#0f172a; margin:0 0 8px 0;">Longitudinal Trend</h3>
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Longitudinal trend chart">
+      <line x1="28" y1="24" x2="28" y2="${height - 28}" stroke="#94a3b8" />
+      <line x1="28" y1="${height - 28}" x2="${width - 28}" y2="${height - 28}" stroke="#94a3b8" />
+      <path d="${path}" fill="none" stroke="#4f46e5" stroke-width="2.5" />${dots}${labels}
+    </svg>
+  </div>`;
+};
 
 export interface PdfExportResult {
   saved: boolean;
@@ -81,6 +141,10 @@ export const pdfExportService = {
       typeof report.rawSourceReference === 'object'
         ? `${report.rawSourceReference.collectionName}/${report.rawSourceReference.documentId}`
         : String(report.rawSourceReference || report.referenceId);
+
+    const comparisonData = report.visualizationData?.comparisonData || [];
+    const trendData = report.visualizationData?.trendData || [];
+    const graphHtml = comparisonSvg(comparisonData) + trendSvg(trendData);
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -242,6 +306,7 @@ export const pdfExportService = {
 
         <div style="margin-bottom: 20px;">
           ${sectionsHtml}
+          ${graphHtml}
         </div>
 
         <div class="evidence-grid">
@@ -316,6 +381,77 @@ function base64FromBytes(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function drawAndroidGraphs(document: any, report: ReportRecord): void {
+  const comparisonData = report.visualizationData?.comparisonData || [];
+  const trendData = report.visualizationData?.trendData || [];
+  if (comparisonData.length === 0 && trendData.length === 0) return;
+
+  if (document.y > 650) document.addPage();
+  document.moveDown().fontSize(13).fillColor('#0369a1').text('REPORT GRAPH');
+
+  if (comparisonData.length > 0) {
+    document.fontSize(10).fillColor('#0f172a').text('Parameter Comparison');
+    const numericValues = comparisonData
+      .map((item) => item.currentValue)
+      .filter((value): value is number => typeof value === 'number');
+    const maxValue = numericValues.length > 0 ? Math.max(...numericValues, 1) : 1;
+    const barX = 220;
+    const barWidth = 170;
+    comparisonData.forEach((item) => {
+      if (document.y > 740) document.addPage();
+      const y = document.y + 3;
+      const value = typeof item.currentValue === 'number' ? item.currentValue : null;
+      const width = value === null ? 0 : Math.max(2, Math.min(barWidth, (value / maxValue) * barWidth));
+      document.fontSize(8.5).fillColor('#334155').text(pdfText(item.parameter), 48, y, { width: 165 });
+      document.roundedRect(barX, y, width, 9, 4).fill('#10b981');
+      document.fillColor('#334155').text(
+        value === null ? '--' : `${value}${item.unit ? ` ${item.unit}` : ''}`,
+        barX + barWidth + 8,
+        y,
+        { width: 100 }
+      );
+      document.y = y + 18;
+    });
+  }
+
+  if (trendData.length > 0) {
+    if (document.y > 650) document.addPage();
+    document.moveDown().fontSize(10).fillColor('#0f172a').text('Longitudinal Trend');
+    const chartX = 65;
+    const chartY = document.y + 8;
+    const chartWidth = 430;
+    const chartHeight = 130;
+    const points = trendData
+      .map((item, index) => ({
+        item,
+        index,
+        value: typeof item.value === 'number' ? item.value : typeof item.score === 'number' ? item.score : null,
+      }))
+      .filter((point): point is { item: VisualizationTrendItem; index: number; value: number } => point.value !== null);
+    if (points.length > 0) {
+      const min = Math.min(...points.map((point) => point.value));
+      const max = Math.max(...points.map((point) => point.value), min + 1);
+      const pointX = (index: number) => chartX + (index * chartWidth) / Math.max(trendData.length - 1, 1);
+      const pointY = (value: number) => chartY + ((max - value) * chartHeight) / (max - min);
+      document.strokeColor('#94a3b8').moveTo(chartX, chartY).lineTo(chartX, chartY + chartHeight).stroke();
+      document.moveTo(chartX, chartY + chartHeight).lineTo(chartX + chartWidth, chartY + chartHeight).stroke();
+      points.forEach((point, pointIndex) => {
+        const x = pointX(point.index);
+        const y = pointY(point.value);
+        if (pointIndex > 0) {
+          const previous = points[pointIndex - 1];
+          document.strokeColor('#4f46e5').moveTo(pointX(previous.index), pointY(previous.value)).lineTo(x, y).stroke();
+        }
+        document.circle(x, y, 3.5).fill('#4f46e5');
+        document.fontSize(7).fillColor('#475569').text(pdfText(point.item.label), x - 25, chartY + chartHeight + 5, { width: 50, align: 'center' });
+      });
+      document.y = chartY + chartHeight + 28;
+    } else {
+      document.fontSize(9).fillColor('#64748b').text('No numeric longitudinal points available.');
+    }
+  }
+}
+
 async function buildAndroidPdf(report: ReportRecord, userName: string): Promise<string> {
   const evidence = normalizedC50(report);
   const sections = report.readableContent?.sections || [];
@@ -356,6 +492,7 @@ async function buildAndroidPdf(report: ReportRecord, userName: string): Promise<
     document.fontSize(10).fillColor('#334155').text(pdfText(section.body));
     for (const bullet of section.bulletPoints || []) document.list([pdfText(bullet)], { bulletRadius: 1.5 });
   }
+  drawAndroidGraphs(document, report);
   document.moveDown().fontSize(13).fillColor('#0369a1').text('C50 ML EVALUATION');
   document.fontSize(10).fillColor('#334155')
     .text(`Pattern: ${evidence.pattern}`)
@@ -391,7 +528,10 @@ async function buildAndroidPdf(report: ReportRecord, userName: string): Promise<
 async function exportReportToAndroid(report: ReportRecord, userName: string): Promise<PdfExportResult> {
   const safeName = `GOATEST_${report.reportType}_${report.reportId}`.replace(/[^a-zA-Z0-9_.-]/g, '_');
   const base64 = await buildAndroidPdf(report, userName);
-  const saved = await Filesystem.writeFile({ path: `${safeName}.pdf`, data: base64, directory: Directory.Documents, recursive: true });
+  // Android scoped storage does not permit direct writes to the shared
+  // Documents root on current target SDKs. Cache is app-writable and the
+  // Share plugin exports it through the configured FileProvider.
+  const saved = await Filesystem.writeFile({ path: `${safeName}.pdf`, data: base64, directory: Directory.Cache });
   const canShare = await Share.canShare();
   if (canShare.value) {
     await Share.share({ title: `GOATEST ${report.reportType} report`, url: saved.uri, dialogTitle: 'Open or share report PDF' });
